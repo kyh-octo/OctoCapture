@@ -1,0 +1,12 @@
+# Build outputs
+bin/
+obj/
+installer/output/
+
+# IDE / local settings
+.vs/
+*.user
+.claude/
+
+# Logs
+*.log

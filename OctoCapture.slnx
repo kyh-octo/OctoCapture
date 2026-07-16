@@ -1,0 +1,9 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="OctoCapture.csproj">
+    <!-- 모든 구성(Debug/Release)에서 x64로 빌드 - Debug|*만 매핑돼 있으면 Release 빌드/게시가 건너뛰어진다 -->
+    <Platform Solution="*|*" Project="x64" />
+  </Project>
+</Solution>

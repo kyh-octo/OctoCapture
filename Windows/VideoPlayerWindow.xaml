@@ -1,0 +1,83 @@
+<Window x:Class="OctoCapture.Windows.VideoPlayerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OctoCapture - 동영상 재생/편집" Height="660" Width="960" MinHeight="420" MinWidth="620"
+        Icon="pack://application:,,,/OctoCapture.ico"
+        Background="#1E1E22" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style x:Key="PlayerBtn" TargetType="Button">
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Background" Value="#3A3A40"/>
+            <Setter Property="BorderBrush" Value="#55555C"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#4A4A52"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#2F9BFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#2A2A2E" Padding="12,8">
+            <StackPanel>
+                <!-- 탐색 슬라이더 + 트림 구간 표시 밴드 -->
+                <Grid x:Name="SeekHost" Height="24" Margin="0,0,0,6">
+                    <Border x:Name="TrimBand" Background="#663FA9F5" Height="8" CornerRadius="4"
+                            HorizontalAlignment="Left" VerticalAlignment="Center" Width="0"/>
+                    <Slider x:Name="SeekSlider" Minimum="0" Maximum="1" VerticalAlignment="Center"
+                            IsMoveToPointEnabled="True"/>
+                </Grid>
+
+                <WrapPanel VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Margin="0,3,14,3">
+                        <Button x:Name="PlayBtn" Style="{StaticResource PlayerBtn}" Content="⏸ 일시정지"
+                                MinWidth="90" Click="PlayPause_Click"/>
+                        <TextBlock x:Name="TimeLabel" Text="00:00 / 00:00" Foreground="#DDDDDD"
+                                   FontSize="13" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,3,14,3">
+                        <TextBlock Text="🔊" Foreground="#BBBBBB" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <Slider x:Name="VolumeSlider" Width="80" Minimum="0" Maximum="1" Value="0.8"
+                                VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,3,14,3">
+                        <Button Style="{StaticResource PlayerBtn}" Content="[ 시작 지점" Click="SetTrimStart_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="끝 지점 ]" Click="SetTrimEnd_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="구간 초기화" Click="ResetTrim_Click"/>
+                        <TextBlock x:Name="TrimLabel" Text="구간: 전체" Foreground="#3FA9F5"
+                                   FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,3,0,3">
+                        <Button Style="{StaticResource PlayerBtn}" Content="💾 저장 (선택 구간)" Click="TrimSave_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="＋ 목록에 추가 (선택 구간)" Click="TrimToList_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="외부 플레이어" Click="External_Click"/>
+                    </StackPanel>
+                </WrapPanel>
+
+                <TextBlock Text="Space: 재생/일시정지  ·  ←/→: 5초 이동  ·  구간을 지정하지 않으면 전체가 저장됩니다"
+                           Foreground="#77777C" FontSize="11" Margin="0,6,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Border Background="Black">
+            <MediaElement x:Name="Player" LoadedBehavior="Manual" ScrubbingEnabled="True"
+                          Stretch="Uniform" MediaOpened="Player_MediaOpened" MediaEnded="Player_MediaEnded"/>
+        </Border>
+    </DockPanel>
+</Window>

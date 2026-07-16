@@ -1,0 +1,195 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
+using OctoCapture.Services;
+
+namespace OctoCapture.Windows
+{
+    /// <summary>
+    /// 녹화 영역 테두리 표시 창 (클릭 통과, 캡쳐 영역 바깥에 그려짐)
+    /// </summary>
+    public class RecordingFrameWindow : Window
+    {
+        private const int BorderPx = 3;
+
+        public RecordingFrameWindow(RECT region)
+        {
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
+            Topmost = true;
+            ShowActivated = false;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
+            Content = new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x3E, 0x3E)),
+                BorderThickness = new Thickness(BorderPx),
+            };
+            SourceInitialized += (_, _) =>
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                NativeMethods.MakeClickThrough(hwnd);
+                NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST,
+                    region.Left - BorderPx, region.Top - BorderPx,
+                    region.Width + BorderPx * 2, region.Height + BorderPx * 2,
+                    NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_NOACTIVATE);
+            };
+        }
+    }
+
+    /// <summary>
+    /// 녹화 컨트롤 바: [● 녹화 시작] [경과 시간] [소리 옵션] [✕ 취소]
+    /// 녹화 영역 아래(또는 위)에 표시된다.
+    /// </summary>
+    public class RecordingBarWindow : Window
+    {
+        public event Action? StartRequested;
+        public event Action? StopRequested;
+        public event Action? Cancelled;
+
+        public bool SystemAudio => _sysAudio.IsChecked == true;
+        public bool Microphone => _mic.IsChecked == true;
+
+        private readonly Button _mainBtn;
+        private readonly TextBlock _elapsed;
+        private readonly CheckBox _sysAudio;
+        private readonly CheckBox _mic;
+        private readonly Button _cancelBtn;
+        private readonly RECT _region;
+        private bool _recording;
+
+        public RecordingBarWindow(RECT region, bool systemAudioDefault, bool micDefault)
+        {
+            _region = region;
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
+            Topmost = true;
+            SizeToContent = SizeToContent.WidthAndHeight;
+            Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x26));
+
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 7, 10, 7) };
+
+            // 드래그 손잡이 (버튼이 아닌 곳을 잡아도 이동 가능)
+            panel.Children.Add(new TextBlock
+            {
+                Text = "⠿",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x8E)),
+                FontSize = 14,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+                Cursor = System.Windows.Input.Cursors.SizeAll,
+                ToolTip = "드래그하여 이동",
+            });
+
+            _mainBtn = new Button
+            {
+                Content = "●  녹화 시작",
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromRgb(0xC9, 0x30, 0x30)),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(14, 6, 14, 6),
+                FontWeight = FontWeights.Bold,
+            };
+            _mainBtn.Click += (_, _) =>
+            {
+                if (_recording) StopRequested?.Invoke();
+                else StartRequested?.Invoke();
+            };
+            panel.Children.Add(_mainBtn);
+
+            _elapsed = new TextBlock
+            {
+                Text = "00:00",
+                Foreground = Brushes.White,
+                FontSize = 15,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(14, 0, 14, 0),
+            };
+            panel.Children.Add(_elapsed);
+
+            _sysAudio = new CheckBox
+            {
+                Content = "시스템 소리",
+                Foreground = Brushes.White,
+                IsChecked = systemAudioDefault,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+            };
+            panel.Children.Add(_sysAudio);
+
+            _mic = new CheckBox
+            {
+                Content = "마이크",
+                Foreground = Brushes.White,
+                IsChecked = micDefault,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 14, 0),
+            };
+            panel.Children.Add(_mic);
+
+            _cancelBtn = new Button
+            {
+                Content = "✕",
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x40)),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10, 6, 10, 6),
+            };
+            _cancelBtn.Click += (_, _) => Cancelled?.Invoke();
+            panel.Children.Add(_cancelBtn);
+
+            Content = new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x2F, 0x9B, 0xFF)),
+                BorderThickness = new Thickness(1),
+                Child = panel,
+            };
+
+            Loaded += (_, _) => PositionNearRegion();
+            // 버튼이 아닌 영역을 잡고 드래그하면 창 이동
+            MouseLeftButtonDown += (_, _) => { try { DragMove(); } catch { /* 버튼 클릭과 경합 시 무시 */ } };
+        }
+
+        private void PositionNearRegion()
+        {
+            var source = PresentationSource.FromVisual(this);
+            double scale = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            int barW = (int)(ActualWidth * scale);
+            int barH = (int)(ActualHeight * scale);
+
+            // 녹화 영역이 속한 모니터 안에 배치 (모니터 경계에 걸치지 않도록)
+            RECT vs = ScreenCaptureService.MonitorRectFromPoint(
+                _region.Left + _region.Width / 2, _region.Top + _region.Height / 2);
+            int x = Math.Clamp(_region.Left + (_region.Width - barW) / 2, vs.Left, Math.Max(vs.Left, vs.Right - barW));
+            int y = _region.Bottom + 12;
+            if (y + barH > vs.Bottom) y = _region.Top - barH - 12;   // 아래 공간이 없으면 위
+            if (y < vs.Top) y = _region.Bottom - barH - 12;           // 위도 없으면 영역 안쪽 하단
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, x, y, barW, barH,
+                NativeMethods.SWP_SHOWWINDOW);
+        }
+
+        public void EnterRecordingState()
+        {
+            _recording = true;
+            _mainBtn.Content = "■  녹화 종료";
+            _sysAudio.IsEnabled = false;
+            _mic.IsEnabled = false;
+            _cancelBtn.Visibility = Visibility.Collapsed;
+        }
+
+        public void SetBusy(string text)
+        {
+            _mainBtn.IsEnabled = false;
+            _mainBtn.Content = text;
+        }
+
+        public void UpdateElapsed(TimeSpan t) =>
+            _elapsed.Text = t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss");
+    }
+}

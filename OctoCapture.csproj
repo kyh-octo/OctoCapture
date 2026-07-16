@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>OctoCapture.ico</ApplicationIcon>
+    <!-- WPF 앱이므로 매니페스트의 PerMonitorV2 DPI 설정이 의도된 구성 (WinForms는 트레이 아이콘만 사용) -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <AssemblyTitle>OctoCapture</AssemblyTitle>
+    <Product>OctoCapture</Product>
+    <Version>1.2.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF 타입과의 모호성 방지: WinForms/Drawing 암시적 전역 using 제거 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 창 아이콘/트레이 아이콘에서 pack URI로 참조하도록 리소스로 포함 -->
+    <Resource Include="OctoCapture.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ScreenRecorderLib" Version="6.3.0" />
+  </ItemGroup>
+
+  <!--
+    단일 파일 게시 시 ScreenRecorderLib.dll을 번들에서 제외해 exe 옆에 배치한다.
+    네이티브 코드가 포함된 어셈블리는 단일 파일 번들 내부에서 로드가 실패해
+    녹화 시작 시 앱이 크래시한다.
+  -->
+  <Target Name="ExcludeMixedModeFromSingleFile" AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="'%(Filename)' == 'ScreenRecorderLib'">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

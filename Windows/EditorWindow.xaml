@@ -1,0 +1,129 @@
+<Window x:Class="OctoCapture.Windows.EditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OctoCapture - 이미지 편집" Height="760" Width="1120"
+        Icon="pack://application:,,,/OctoCapture.ico"
+        Background="#1E1E22" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style x:Key="ToolBtn" TargetType="RadioButton">
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Foreground" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="#3A3A40"/>
+            <Setter Property="BorderBrush" Value="#55555C"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2F6BAF"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#2F9BFF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#2F9BFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ActBtn" TargetType="Button">
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Foreground" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="#3A3A40"/>
+            <Setter Property="BorderBrush" Value="#55555C"/>
+        </Style>
+        <Style x:Key="Swatch" TargetType="Button">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="BorderBrush" Value="#77777C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#2A2A2E" Padding="8,4">
+            <!-- 창이 좁으면 그룹 단위로 다음 줄로 접혀 오른쪽 메뉴가 잘리지 않는다 -->
+            <WrapPanel VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Margin="0,3,12,3">
+                    <RadioButton x:Name="BtnPen" Style="{StaticResource ToolBtn}" GroupName="tools" Content="✏ 펜" IsChecked="True" Checked="Tool_Checked" Tag="Pen"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="─ 직선" Checked="Tool_Checked" Tag="Line"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="➤ 화살표" Checked="Tool_Checked" Tag="Arrow"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="▭ 사각형" Checked="Tool_Checked" Tag="Rect"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="◯ 원" Checked="Tool_Checked" Tag="Ellipse"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="T 텍스트" Checked="Tool_Checked" Tag="Text"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="▩ 모자이크" Checked="Tool_Checked" Tag="Mosaic"/>
+                    <RadioButton Style="{StaticResource ToolBtn}" GroupName="tools" Content="✂ 자르기" Checked="Tool_Checked" Tag="Crop"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,3,12,3">
+                    <Border x:Name="CurrentColorBox" Width="24" Height="24" CornerRadius="4"
+                            BorderBrush="White" BorderThickness="2" Background="Red" Margin="0,0,6,0"/>
+                    <Button Style="{StaticResource Swatch}" Background="#FF3B30" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#FF9500" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#FFCC00" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#34C759" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#2F9BFF" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#AF52DE" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#FF2D92" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#000000" Click="Swatch_Click"/>
+                    <Button Style="{StaticResource Swatch}" Background="#FFFFFF" Click="Swatch_Click"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,3,12,3">
+                    <TextBlock Text="굵기" Foreground="#BBBBBB" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <Slider x:Name="ThicknessSlider" Width="90" Minimum="1" Maximum="16" Value="3"
+                            VerticalAlignment="Center" IsSnapToTickEnabled="True" TickFrequency="1"/>
+                    <TextBlock x:Name="ThicknessLabel" Text="3" Foreground="#BBBBBB" VerticalAlignment="Center" Width="18" Margin="4,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,3,0,3">
+                    <Button Style="{StaticResource ActBtn}" Content="↩ 실행취소" Click="Undo_Click"/>
+                    <Rectangle Width="1" Fill="#55555C" Margin="6,2"/>
+                    <Button Style="{StaticResource ActBtn}" Content="📋 복사" Click="Copy_Click"/>
+                    <Button Style="{StaticResource ActBtn}" Content="💾 저장" Click="Save_Click"/>
+                    <Button Style="{StaticResource ActBtn}" Content="＋ 목록에 추가" Click="AddToList_Click"/>
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="#2A2A2E" Padding="10,4">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="StatusSize" Foreground="#BBBBBB" FontSize="12"/>
+                <TextBlock x:Name="StatusZoom" Foreground="#BBBBBB" FontSize="12" Margin="16,0,0,0"/>
+                <TextBlock Text="Ctrl+휠: 확대/축소  ·  Ctrl+Z: 실행취소  ·  Ctrl+C: 복사  ·  Ctrl+S: 저장"
+                           Foreground="#77777C" FontSize="12" Margin="24,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer x:Name="Scroller" Background="#151517"
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="Scroller_PreviewMouseWheel">
+            <Border x:Name="ZoomHost" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
+                <Grid x:Name="EditRoot" Background="Transparent"
+                      MouseLeftButtonDown="EditRoot_MouseDown"
+                      MouseMove="EditRoot_MouseMove"
+                      MouseLeftButtonUp="EditRoot_MouseUp">
+                    <Image x:Name="BaseImage" Stretch="Fill"/>
+                    <Canvas x:Name="ShapeCanvas" Background="Transparent"/>
+                </Grid>
+            </Border>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
