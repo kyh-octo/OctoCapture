@@ -50,7 +50,14 @@ namespace OctoCapture.Services
             }
         }
 
-        private async void BeginRegionSelect()
+        /// <summary>마지막으로 사용한 영역 지정 방식 (영역 변경 시 이 방식으로 다시 시작)</summary>
+        private CaptureMode _areaMode = CaptureMode.Region;
+
+        /// <summary>
+        /// 영역 지정 시작. restoreRegion이 있으면 [영역 변경] 재지정 흐름이며,
+        /// 취소 시 이전 영역/오디오 설정으로 대기 상태를 복원한다.
+        /// </summary>
+        private async void BeginRegionSelect(RECT? restoreRegion = null, bool? sysAudio = null, bool? mic = null)
         {
             _state = State.Armed;
             try
@@ -58,56 +65,135 @@ namespace OctoCapture.Services
                 foreach (Window w in Application.Current.Windows)
                     if (w is MainWindow && w.IsVisible) { w.Hide(); await Task.Delay(180); }
 
+                // 영역 지정 방식 선택 루프: 직접 지정 / 창 / 단위 / 전체 화면 (모드 바로 전환 가능)
                 var frozen = ScreenCaptureService.CaptureFullScreen();
-                var selector = new RegionSelectorWindow(frozen, "녹화할 영역을 드래그하세요 (Esc: 취소)");
-                selector.ShowDialog();
-                if (selector.SelectedRect is not RECT region)
+                CaptureMode mode = _areaMode;
+                RECT? picked = null;
+                while (picked == null)
                 {
-                    _state = State.Idle;
-                    CaptureController.ShowMainWindow(); // 취소 후 메인 창 표시
-                    return;
-                }
+                    if (mode == CaptureMode.Region)
+                    {
+                        var selector = new RegionSelectorWindow(frozen,
+                            "녹화할 영역을 드래그하세요 (Esc: 취소)", mode, Windows.CaptureModeBar.RecordingItems);
+                        selector.ShowDialog();
+                        if (selector.SwitchRequest is CaptureMode next) { mode = next; continue; }
+                        if (selector.SelectedRect is RECT r) { picked = r; break; }
+                    }
+                    else
+                    {
+                        var (pickerMode, hint, targets) = mode switch
+                        {
+                            CaptureMode.Window => (PickerMode.TopLevelWindow, "녹화할 창을 클릭하세요 (Esc: 취소)", (List<WindowInfo>?)null),
+                            CaptureMode.Unit => (PickerMode.UnitControl, "녹화할 영역(컨트롤)을 클릭하세요 (Esc: 취소)", null),
+                            _ => (PickerMode.TopLevelWindow, "녹화할 모니터를 클릭하세요 (Esc: 취소)", CaptureController.GetMonitorTargets()),
+                        };
+                        var picker = new WindowPickerWindow(frozen, pickerMode, hint, mode, targets,
+                            Windows.CaptureModeBar.RecordingItems);
+                        picker.ShowDialog();
+                        if (picker.SwitchRequest is CaptureMode next) { mode = next; continue; }
+                        if (picker.Selected != null) { picked = picker.Selected.Bounds; break; }
+                    }
 
-                // 녹화 영역은 한 모니터 내로 제한 (영역 중심이 속한 모니터 기준으로 잘라냄)
-                RECT mon = ScreenCaptureService.MonitorRectFromPoint(
-                    region.Left + region.Width / 2, region.Top + region.Height / 2);
-                _region = new RECT
-                {
-                    Left = Math.Max(region.Left, mon.Left),
-                    Top = Math.Max(region.Top, mon.Top),
-                    Right = Math.Min(region.Right, mon.Right),
-                    Bottom = Math.Min(region.Bottom, mon.Bottom),
-                };
-                if (_region.Width < 16 || _region.Height < 16)
-                {
+                    // 취소 (Esc / ✕)
+                    if (restoreRegion is RECT prev)
+                    {
+                        // [영역 변경] 도중 취소 → 이전 대기 상태(영역/오디오 옵션) 복원
+                        ArmRegion(prev, frozen, sysAudio, mic);
+                        return;
+                    }
                     _state = State.Idle;
+                    _startThumbnail = null;
                     CaptureController.ShowMainWindow();
                     return;
                 }
+                _areaMode = mode;
 
-                _frame = new RecordingFrameWindow(_region);
-                _frame.Show();
-
-                _bar = new RecordingBarWindow(_region, _controller.Settings.RecordSystemAudio, _controller.Settings.RecordMicrophone);
-                _bar.StartRequested += StartRecording;
-                _bar.StopRequested += StopRecording;
-                _bar.Cancelled += CancelArmed;
-                _bar.Show();
+                if (!ArmRegion(picked.Value, frozen, sysAudio, mic))
+                {
+                    _state = State.Idle;
+                    CaptureController.ShowMainWindow();
+                }
             }
             catch (Exception ex)
             {
                 CleanupUi();
                 _state = State.Idle;
+                _startThumbnail = null;
                 CaptureController.ShowMainWindow();
                 MessageBox.Show($"녹화 준비 중 오류: {ex.Message}", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+
+        /// <summary>
+        /// 영역을 확정하고 테두리/컨트롤 바를 띄운다 (대기 상태).
+        /// 썸네일은 바가 뜨기 전의 프리즈 프레임에서 잘라 쓴다 (바가 찍히지 않음).
+        /// </summary>
+        private bool ArmRegion(RECT region, BitmapSource frozen, bool? sysAudio, bool? mic)
+        {
+            // 녹화 영역은 한 모니터 내로 제한 (영역 중심이 속한 모니터 기준으로 잘라냄)
+            RECT mon = ScreenCaptureService.MonitorRectFromPoint(
+                region.Left + region.Width / 2, region.Top + region.Height / 2);
+            _region = new RECT
+            {
+                Left = Math.Max(region.Left, mon.Left),
+                Top = Math.Max(region.Top, mon.Top),
+                Right = Math.Min(region.Right, mon.Right),
+                Bottom = Math.Min(region.Bottom, mon.Bottom),
+            };
+            if (_region.Width < 16 || _region.Height < 16) return false;
+
+            _startThumbnail = CropFrozen(frozen, _region);
+
+            _frame = new RecordingFrameWindow(_region);
+            _frame.Show();
+
+            _bar = new RecordingBarWindow(_region,
+                sysAudio ?? _controller.Settings.RecordSystemAudio,
+                mic ?? _controller.Settings.RecordMicrophone);
+            _bar.StartRequested += StartRecording;
+            _bar.StopRequested += StopRecording;
+            _bar.Cancelled += CancelArmed;
+            _bar.RegionChangeRequested += ChangeRegion;
+            _bar.Show();
+            _state = State.Armed;
+            return true;
+        }
+
+        private static BitmapSource? CropFrozen(BitmapSource frozen, RECT region)
+        {
+            try
+            {
+                RECT vs = ScreenCaptureService.VirtualScreen;
+                int x = Math.Max(0, region.Left - vs.Left), y = Math.Max(0, region.Top - vs.Top);
+                int w = Math.Min(region.Width, frozen.PixelWidth - x), h = Math.Min(region.Height, frozen.PixelHeight - y);
+                if (w <= 0 || h <= 0) return null;
+                var crop = new WriteableBitmap(new CroppedBitmap(frozen, new Int32Rect(x, y, w, h)));
+                crop.Freeze();
+                return crop;
+            }
+            catch { return null; }
         }
 
         private void CancelArmed()
         {
             CleanupUi();
             _state = State.Idle;
+            _startThumbnail = null;
             CaptureController.ShowMainWindow(); // 취소 후 메인 창 표시
+        }
+
+        /// <summary>
+        /// 녹화 시작 전 [영역 변경]: 바/테두리를 닫고 영역 지정을 다시 시작한다.
+        /// 현재 오디오 체크 상태를 유지하고, 재지정을 취소하면 이전 영역으로 복귀한다.
+        /// </summary>
+        private async void ChangeRegion()
+        {
+            if (_state != State.Armed || _bar == null) return;
+            bool sysAudio = _bar.SystemAudio, mic = _bar.Microphone;
+            RECT previous = _region;
+            CleanupUi();
+            await Task.Delay(180); // 닫힌 바/테두리가 화면에서 사라진 뒤 프리즈 프레임을 찍는다 (잔상 방지)
+            BeginRegionSelect(previous, sysAudio, mic);
         }
 
         private void StartRecording()
@@ -121,8 +207,8 @@ namespace OctoCapture.Services
                 Directory.CreateDirectory(TempDir);
                 string output = Path.Combine(TempDir, $"rec_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
 
-                // 시작 시점 썸네일 (ffmpeg 없이도 목록에 미리보기 제공)
-                _startThumbnail = ScreenCaptureService.CaptureRegion(_region);
+                // 썸네일은 영역 확정 시 프리즈 프레임에서 잘라둠 (없으면 지금 캡쳐)
+                _startThumbnail ??= ScreenCaptureService.CaptureRegion(_region);
 
                 RECT mon = ScreenCaptureService.MonitorRectFromPoint(
                     _region.Left + _region.Width / 2, _region.Top + _region.Height / 2);
@@ -178,6 +264,7 @@ namespace OctoCapture.Services
                 DisposeRecorder();
                 CleanupUi();
                 _state = State.Idle;
+                _startThumbnail = null; // 전체 해상도 비트맵 해제
                 CaptureController.ShowMainWindow();
                 MessageBox.Show($"녹화를 시작할 수 없습니다.\n{ex.Message}", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
@@ -229,10 +316,9 @@ namespace OctoCapture.Services
                     _region.Width, _region.Height,
                     _stopwatch.Elapsed, _startThumbnail);
                 _startThumbnail = null;
-                _controller.AddVideo(item);
-
-                if (_controller.Settings.CopyToClipboardOnCapture)
-                    ClipboardService.CopyFile(e.FilePath);
+                bool copied = _controller.Settings.CopyToClipboardOnCapture
+                              && ClipboardService.CopyFile(e.FilePath);
+                _controller.AddVideo(item, copied);
 
                 CaptureController.ShowMainWindow(); // 녹화 완료 후 메인 창에서 결과 확인
             });
@@ -269,14 +355,14 @@ namespace OctoCapture.Services
             _frame?.Close(); _frame = null;
         }
 
-        /// <summary>앱 시작/종료 시 임시 녹화 파일 정리</summary>
+        /// <summary>앱 시작/종료 시 임시 녹화 파일 정리 (클립보드가 참조 중인 파일은 남긴다)</summary>
         public static void CleanTempFiles()
         {
             try
             {
                 if (!Directory.Exists(TempDir)) return;
                 foreach (var f in Directory.GetFiles(TempDir))
-                    try { File.Delete(f); } catch { /* 사용 중 파일은 무시 */ }
+                    TempFileCleaner.TryDelete(f);
             }
             catch { }
         }

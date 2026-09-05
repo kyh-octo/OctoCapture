@@ -31,6 +31,7 @@ namespace OctoCapture.Windows
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
                 NativeMethods.MakeClickThrough(hwnd);
+                NativeMethods.ExcludeFromCapture(hwnd); // 테두리가 녹화 영상에 찍히지 않도록
                 NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST,
                     region.Left - BorderPx, region.Top - BorderPx,
                     region.Width + BorderPx * 2, region.Height + BorderPx * 2,
@@ -48,11 +49,13 @@ namespace OctoCapture.Windows
         public event Action? StartRequested;
         public event Action? StopRequested;
         public event Action? Cancelled;
+        public event Action? RegionChangeRequested;
 
         public bool SystemAudio => _sysAudio.IsChecked == true;
         public bool Microphone => _mic.IsChecked == true;
 
         private readonly Button _mainBtn;
+        private readonly Button _regionBtn;
         private readonly TextBlock _elapsed;
         private readonly CheckBox _sysAudio;
         private readonly CheckBox _mic;
@@ -99,6 +102,19 @@ namespace OctoCapture.Windows
                 else StartRequested?.Invoke();
             };
             panel.Children.Add(_mainBtn);
+
+            _regionBtn = new Button
+            {
+                Content = "⬚ 영역 변경",
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x40)),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(8, 0, 0, 0),
+                ToolTip = "녹화 영역을 다시 지정합니다 (직접 지정/창/단위/전체 화면)",
+            };
+            _regionBtn.Click += (_, _) => RegionChangeRequested?.Invoke();
+            panel.Children.Add(_regionBtn);
 
             _elapsed = new TextBlock
             {
@@ -149,6 +165,8 @@ namespace OctoCapture.Windows
                 Child = panel,
             };
 
+            // 전체 화면/최대화 창 녹화처럼 바가 영역 안에 놓여도 영상에 찍히지 않도록 캡쳐에서 제외
+            SourceInitialized += (_, _) => NativeMethods.ExcludeFromCapture(new WindowInteropHelper(this).Handle);
             Loaded += (_, _) => PositionNearRegion();
             // 버튼이 아닌 영역을 잡고 드래그하면 창 이동
             MouseLeftButtonDown += (_, _) => { try { DragMove(); } catch { /* 버튼 클릭과 경합 시 무시 */ } };
@@ -178,6 +196,7 @@ namespace OctoCapture.Windows
         {
             _recording = true;
             _mainBtn.Content = "■  녹화 종료";
+            _regionBtn.Visibility = Visibility.Collapsed; // 녹화 중에는 영역 변경 불가
             _sysAudio.IsEnabled = false;
             _mic.IsEnabled = false;
             _cancelBtn.Visibility = Visibility.Collapsed;

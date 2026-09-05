@@ -21,6 +21,7 @@ namespace OctoCapture.Models
         public bool RunAtStartup { get; set; } = false;
         public bool MinimizeToTrayOnClose { get; set; } = true;
         public bool CopyToClipboardOnCapture { get; set; } = true;
+        [Obsolete("메인 화면 즉석 편집으로 대체됨. 기존 settings.json 호환을 위해 유지.")]
         public bool OpenEditorAfterCapture { get; set; } = false;
         public string SaveFolder { get; set; } = "";
         public string ImageFormat { get; set; } = "png"; // png | jpg | bmp

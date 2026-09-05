@@ -32,7 +32,8 @@ namespace OctoCapture.Windows
 
         public RegionSelectorWindow(BitmapSource frozen,
             string hintText = "드래그하여 영역을 선택하세요 (Esc: 취소)",
-            Services.CaptureMode? barMode = null)
+            Services.CaptureMode? barMode = null,
+            (string Label, Services.CaptureMode Mode)[]? barItems = null)
         {
             _frozen = frozen;
 
@@ -88,7 +89,8 @@ namespace OctoCapture.Windows
             {
                 bar = new CaptureModeBar(currentMode,
                     m => { SwitchRequest = m; SelectedRect = null; Close(); },
-                    () => { SelectedRect = null; Close(); });
+                    () => { SelectedRect = null; Close(); },
+                    barItems);
                 canvas.Children.Add(bar);
             }
 

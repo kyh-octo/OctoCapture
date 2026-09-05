@@ -57,5 +57,35 @@ namespace OctoCapture.Services
             }
             catch { return false; }
         }
+
+        /// <summary>
+        /// 해당 파일이 현재 클립보드(파일 드롭 목록)에 올라가 있는지 확인.
+        /// 어느 스레드에서 호출해도 UI 스레드로 마샬링한다.
+        /// </summary>
+        public static bool IsFileOnClipboard(string path)
+        {
+            try
+            {
+                var app = Application.Current;
+                if (app == null) return false;
+                if (!app.Dispatcher.CheckAccess())
+                    return app.Dispatcher.Invoke(() => IsFileOnClipboardCore(path),
+                        System.Windows.Threading.DispatcherPriority.Normal, CancellationToken.None, TimeSpan.FromSeconds(2));
+                return IsFileOnClipboardCore(path);
+            }
+            catch { return false; }
+        }
+
+        private static bool IsFileOnClipboardCore(string path)
+        {
+            try
+            {
+                if (!Clipboard.ContainsFileDropList()) return false;
+                foreach (var f in Clipboard.GetFileDropList())
+                    if (string.Equals(f, path, StringComparison.OrdinalIgnoreCase)) return true;
+                return false;
+            }
+            catch { return false; }
+        }
     }
 }

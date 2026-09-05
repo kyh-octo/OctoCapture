@@ -1,23 +1,29 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
-using Microsoft.Win32;
-using Path = System.Windows.Shapes.Path;
 using OctoCapture.Models;
-using OctoCapture.Services;
+using Path = System.Windows.Shapes.Path;
 
-namespace OctoCapture.Windows
+namespace OctoCapture.Controls
 {
-    public partial class EditorWindow : Window
+    /// <summary>
+    /// 메인 화면에 내장되는 이미지 편집기 (알캡쳐 스타일 즉석 편집).
+    /// 펜/도형/텍스트/모자이크/자르기, [저장]=현재 캡쳐 덮어쓰기, [새 캡쳐 저장]=목록에 추가.
+    /// </summary>
+    public partial class EditorControl : UserControl
     {
         private enum Tool { Pen, Line, Arrow, Rect, Ellipse, Text, Mosaic, Crop }
 
-        private readonly CaptureItem _item;
-        private readonly CaptureController _controller;
+        /// <summary>[새 캡쳐 저장] 클릭 시 합성 결과와 원본 항목을 전달</summary>
+        public event Action<BitmapSource, CaptureItem>? SaveAsNewRequested;
+
+        /// <summary>[저장](덮어쓰기) 후 알림 (미리보기 제목 갱신용)</summary>
+        public event Action<CaptureItem>? Edited;
+
+        public CaptureItem? CurrentItem { get; private set; }
 
         private Tool _tool = Tool.Pen;
         private Color _color = Color.FromRgb(0xFF, 0x3B, 0x30);
@@ -28,29 +34,66 @@ namespace OctoCapture.Windows
 
         private bool _dragging;
         private Point _start;
-        private UIElement? _preview;       // 드래그 중 임시 요소
+        private UIElement? _preview;
         private Polyline? _penLine;
         private TextBox? _editingText;
 
         private readonly Stack<EditAction> _undoStack = new();
 
-        public EditorWindow(CaptureItem item, CaptureController controller)
+        public EditorControl()
         {
             InitializeComponent();
-            _item = item;
-            _controller = controller;
-
-            var img = item.LoadFullImage();
-            if (img == null) { Close(); return; }
-            SetBase(img);
-
             ThicknessSlider.ValueChanged += (_, _) =>
             {
                 if (ThicknessLabel != null) ThicknessLabel.Text = ((int)ThicknessSlider.Value).ToString();
             };
-            PreviewKeyDown += OnKey;
-            Loaded += (_, _) => FitToWindow();
+            SizeChanged += (_, _) => { if (_undoStack.Count == 0 && CurrentItem != null) FitToWindow(); };
+            // Alt+Tab 등으로 드래그 중 마우스 캡처를 잃으면 마지막 위치로 도형을 확정 (고아 미리보기 방지)
+            EditRoot.LostMouseCapture += (_, _) => { if (_dragging) FinishDrag(_lastPos); };
         }
+
+        private Point _lastPos;
+
+        // ---------- 항목 로드/해제 ----------
+
+        /// <summary>캡쳐 항목을 편집기에 로드한다 (기존 편집 내용은 버려짐).</summary>
+        public void LoadItem(CaptureItem item)
+        {
+            var img = item.LoadFullImage();
+            if (img == null) { ClearEditor(); return; }
+            CurrentItem = item;
+            ResetEditState();
+            SetBase(img);
+            Dispatcher.BeginInvoke(FitToWindow, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>편집기를 비운다 (선택 해제/삭제 시).</summary>
+        public void ClearEditor()
+        {
+            CurrentItem = null;
+            ResetEditState();
+            BaseImage.Source = null;
+            _pxW = _pxH = 0;
+            StatusSize.Text = "";
+        }
+
+        private void ResetEditState()
+        {
+            CancelTextEdit();
+            _dragging = false;
+            _preview = null;
+            _penLine = null;
+            ShapeCanvas.Children.Clear();
+            _undoStack.Clear();
+        }
+
+        public bool HasImage => CurrentItem != null && BaseImage.Source != null;
+
+        /// <summary>저장하지 않은 편집 내용이 있는가</summary>
+        public bool IsDirty => _undoStack.Count > 0 || _editingText != null || _dragging;
+
+        /// <summary>텍스트 도구로 입력 중인가 (전역 단축키 라우팅 판단용)</summary>
+        public bool IsEditingText => _editingText != null;
 
         private void SetBase(BitmapSource source)
         {
@@ -65,10 +108,10 @@ namespace OctoCapture.Windows
 
         private void FitToWindow()
         {
-            double vw = Scroller.ViewportWidth - 48, vh = Scroller.ViewportHeight - 48;
+            if (_pxW == 0 || _pxH == 0) return;
+            double vw = Scroller.ViewportWidth - 30, vh = Scroller.ViewportHeight - 30;
             if (vw <= 0 || vh <= 0) return;
-            double fit = Math.Min(1.0, Math.Min(vw / _pxW, vh / _pxH));
-            SetZoom(fit);
+            SetZoom(Math.Min(1.0, Math.Min(vw / _pxW, vh / _pxH)));
         }
 
         private void SetZoom(double zoom)
@@ -98,45 +141,39 @@ namespace OctoCapture.Windows
 
         private void Undo_Click(object sender, RoutedEventArgs e) => Undo();
 
-        private void Copy_Click(object sender, RoutedEventArgs e)
+        /// <summary>[저장] - 편집 결과를 현재 캡쳐 항목에 덮어쓴다.</summary>
+        private void SaveOverwrite_Click(object sender, RoutedEventArgs e)
         {
+            if (CurrentItem == null) return;
             CommitTextIfEditing();
-            ClipboardService.CopyImage(RenderComposite());
+            var composite = RenderComposite();
+            CurrentItem.SetImage(composite);
+            // 저장된 결과를 새 기준으로 다시 로드 (도형은 이미지에 구워졌고 실행취소 스택 초기화)
+            ResetEditState();
+            SetBase(composite);
+            Edited?.Invoke(CurrentItem);
         }
 
-        private void Save_Click(object sender, RoutedEventArgs e)
+        /// <summary>[새 캡쳐 저장] - 편집 결과를 목록에 새 항목으로 추가한다.</summary>
+        private void SaveAsNew_Click(object sender, RoutedEventArgs e)
         {
+            if (CurrentItem == null) return;
             CommitTextIfEditing();
-            SaveImage(RenderComposite(), _controller.Settings);
+            SaveAsNewRequested?.Invoke(RenderComposite(), CurrentItem);
         }
 
-        private void AddToList_Click(object sender, RoutedEventArgs e)
-        {
-            CommitTextIfEditing();
-            _controller.AddImage(RenderComposite(), $"{_item.Title} (편집)");
-        }
+        // ---------- 키보드 (메인 창에서 라우팅) ----------
 
-        public static void SaveImage(BitmapSource image, AppSettings settings)
+        /// <summary>Ctrl+Z 등 편집 단축키 처리. 처리했으면 true.</summary>
+        public bool HandleKey(KeyEventArgs e)
         {
-            string def = settings.ImageFormat.ToLowerInvariant();
-            var dlg = new SaveFileDialog
+            if (!HasImage || _editingText != null) return false;
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z)
             {
-                FileName = $"OctoCapture_{DateTime.Now:yyyyMMdd_HHmmss}",
-                InitialDirectory = settings.GetEffectiveSaveFolder(),
-                Filter = "PNG 이미지|*.png|JPEG 이미지|*.jpg|BMP 이미지|*.bmp",
-                FilterIndex = def == "jpg" ? 2 : def == "bmp" ? 3 : 1,
-            };
-            if (dlg.ShowDialog() != true) return;
-
-            BitmapEncoder encoder = System.IO.Path.GetExtension(dlg.FileName).ToLowerInvariant() switch
-            {
-                ".jpg" or ".jpeg" => new JpegBitmapEncoder { QualityLevel = 92 },
-                ".bmp" => new BmpBitmapEncoder(),
-                _ => new PngBitmapEncoder(),
-            };
-            encoder.Frames.Add(BitmapFrame.Create(image));
-            using var fs = File.Create(dlg.FileName);
-            encoder.Save(fs);
+                Undo();
+                return true;
+            }
+            return false;
         }
 
         // ---------- 마우스 입력 ----------
@@ -146,6 +183,7 @@ namespace OctoCapture.Windows
 
         private void EditRoot_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (!HasImage) return;
             if (_editingText != null) { CommitTextIfEditing(); return; }
             var pos = ClampToImage(e.GetPosition(EditRoot));
 
@@ -157,6 +195,7 @@ namespace OctoCapture.Windows
 
             _dragging = true;
             _start = pos;
+            _lastPos = pos;
             EditRoot.CaptureMouse();
 
             var brush = new SolidColorBrush(_color);
@@ -214,6 +253,13 @@ namespace OctoCapture.Windows
         {
             if (!_dragging || _preview == null) return;
             var pos = ClampToImage(e.GetPosition(EditRoot));
+            _lastPos = pos;
+            if (e.LeftButton != MouseButtonState.Pressed)
+            {
+                // 버튼이 떼진 채로 이동 이벤트가 오면(캡처 상실 후) 드래그 종료
+                FinishDrag(pos);
+                return;
+            }
 
             switch (_tool)
             {
@@ -245,9 +291,15 @@ namespace OctoCapture.Windows
         private void EditRoot_MouseUp(object sender, MouseButtonEventArgs e)
         {
             if (!_dragging) return;
+            FinishDrag(ClampToImage(e.GetPosition(EditRoot)));
+        }
+
+        /// <summary>드래그 종료 처리 (MouseUp / 캡처 상실 공용)</summary>
+        private void FinishDrag(Point pos)
+        {
+            if (!_dragging) return;
             _dragging = false;
-            EditRoot.ReleaseMouseCapture();
-            var pos = ClampToImage(e.GetPosition(EditRoot));
+            if (EditRoot.IsMouseCaptured) EditRoot.ReleaseMouseCapture();
             var preview = _preview;
             _preview = null;
             _penLine = null;
@@ -271,7 +323,6 @@ namespace OctoCapture.Windows
                 }
                 default:
                 {
-                    // 크기가 사실상 0이면 무시
                     if ((_tool is Tool.Rect or Tool.Ellipse) && ((Shape)preview).Width < 2 && ((Shape)preview).Height < 2)
                     {
                         ShapeCanvas.Children.Remove(preview);
@@ -420,9 +471,10 @@ namespace OctoCapture.Windows
 
         // ---------- 합성 / 실행취소 ----------
 
-        private BitmapSource RenderComposite()
+        /// <summary>현재 편집 상태를 합성한 이미지 (복사/파일 저장/덮어쓰기에 사용)</summary>
+        public BitmapSource RenderComposite()
         {
-            // 진행 중 미리보기 요소는 제외하고 렌더
+            CommitTextIfEditing();
             if (_preview != null) ShapeCanvas.Children.Remove(_preview);
             EditRoot.UpdateLayout();
             var rtb = new RenderTargetBitmap(_pxW, _pxH, 96, 96, PixelFormats.Pbgra32);
@@ -439,20 +491,6 @@ namespace OctoCapture.Windows
             _undoStack.Pop().Undo(this);
         }
 
-        private void OnKey(object sender, KeyEventArgs e)
-        {
-            if (_editingText != null) return; // 텍스트 입력 중에는 단축키 무시
-            if (Keyboard.Modifiers == ModifierKeys.Control)
-            {
-                switch (e.Key)
-                {
-                    case Key.Z: Undo(); e.Handled = true; break;
-                    case Key.C: Copy_Click(this, new RoutedEventArgs()); e.Handled = true; break;
-                    case Key.S: Save_Click(this, new RoutedEventArgs()); e.Handled = true; break;
-                }
-            }
-        }
-
         private void Scroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
             if (Keyboard.Modifiers != ModifierKeys.Control) return;
@@ -462,14 +500,14 @@ namespace OctoCapture.Windows
 
         private abstract class EditAction
         {
-            public abstract void Undo(EditorWindow w);
+            public abstract void Undo(EditorControl c);
         }
 
         private sealed class ShapeAction : EditAction
         {
             private readonly UIElement _shape;
             public ShapeAction(UIElement shape) => _shape = shape;
-            public override void Undo(EditorWindow w) => w.ShapeCanvas.Children.Remove(_shape);
+            public override void Undo(EditorControl c) => c.ShapeCanvas.Children.Remove(_shape);
         }
 
         private sealed class RebaseAction : EditAction
@@ -481,12 +519,12 @@ namespace OctoCapture.Windows
                 _prevBase = prevBase;
                 _prevShapes = prevShapes;
             }
-            public override void Undo(EditorWindow w)
+            public override void Undo(EditorControl c)
             {
-                w.ShapeCanvas.Children.Clear();
-                w.SetBase(_prevBase);
-                foreach (var s in _prevShapes) w.ShapeCanvas.Children.Add(s);
-                w.FitToWindow();
+                c.ShapeCanvas.Children.Clear();
+                c.SetBase(_prevBase);
+                foreach (var s in _prevShapes) c.ShapeCanvas.Children.Add(s);
+                c.FitToWindow();
             }
         }
     }

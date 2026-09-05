@@ -21,8 +21,13 @@ namespace OctoCapture.Windows
 
         private bool _isPlaying;
         private bool _dragging;
+        private bool _closed;
+        private bool _trimBusy;
         private TimeSpan _duration = TimeSpan.Zero;
         private TimeSpan? _trimStart, _trimEnd;
+
+        /// <summary>이 플레이어가 열고 있는 캡쳐 항목 (같은 항목의 중복 플레이어 방지용)</summary>
+        public CaptureItem Item => _item;
 
         public VideoPlayerWindow(CaptureItem item, CaptureController controller)
         {
@@ -70,6 +75,7 @@ namespace OctoCapture.Windows
             Closed += (_, _) =>
             {
                 // 파일 핸들 해제 (삭제/이동이 막히지 않도록)
+                _closed = true;
                 _timer.Stop();
                 Player.Stop();
                 Player.Close();
@@ -194,45 +200,70 @@ namespace OctoCapture.Windows
             return true;
         }
 
-        /// <summary>선택 구간을 MP4/GIF/WebP 파일로 저장</summary>
-        private async void TrimSave_Click(object sender, RoutedEventArgs e)
+        /// <summary>[저장] - 선택 구간만 남기고 현재 캡쳐 항목에 덮어쓴다.</summary>
+        private async void TrimOverwrite_Click(object sender, RoutedEventArgs e)
         {
-            if (_item.VideoPath == null || !ValidateRange(out var start, out var len)) return;
-
-            string def = _controller.Settings.VideoFormat.ToLowerInvariant();
-            var dlg = new SaveFileDialog
+            if (_item.VideoPath == null) return;
+            if (!HasTrim)
             {
-                FileName = $"OctoCapture_{DateTime.Now:yyyyMMdd_HHmmss}",
-                InitialDirectory = _controller.Settings.GetEffectiveSaveFolder(),
-                Filter = "MP4 동영상|*.mp4|GIF 애니메이션|*.gif|WebP 애니메이션|*.webp",
-                FilterIndex = def == "gif" ? 2 : def == "webp" ? 3 : 1,
-            };
-            if (dlg.ShowDialog() != true) return;
+                MessageBox.Show("잘라낼 구간이 지정되지 않았습니다.\n[ 시작 지점 / 끝 지점 ] 버튼으로 구간을 먼저 지정하세요.",
+                    "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (!ValidateRange(out var start, out var len)) return;
+            if (_trimBusy) return; // 변환 중 중복 클릭 방지
+            _trimBusy = true;
 
-            string ext = System.IO.Path.GetExtension(dlg.FileName).ToLowerInvariant();
             try
             {
-                // 트림 없이 MP4 그대로면 재인코딩 없이 복사
-                if (!HasTrim && ext == ".mp4")
-                {
-                    File.Copy(_item.VideoPath, dlg.FileName, true);
-                    return;
-                }
-
                 string? ffmpeg = await FfmpegService.EnsureFfmpegAsync();
                 if (ffmpeg == null) return;
 
-                string format = ext == ".gif" ? "gif" : ext == ".webp" ? "webp" : "mp4";
-                bool ok = await BusyWindow.RunAsync("선택 구간 저장 중… 잠시만 기다려주세요.",
-                    () => FfmpegService.TrimConvertAsync(ffmpeg, _item.VideoPath, dlg.FileName,
-                        format, HasTrim ? start : null, HasTrim ? len : null, _controller.Settings.GifFps));
-                if (!ok)
-                    MessageBox.Show("저장에 실패했습니다.", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
+                string input = _item.VideoPath;
+                Directory.CreateDirectory(RecordingCoordinator.TempDir);
+                string output = System.IO.Path.Combine(RecordingCoordinator.TempDir,
+                    $"trim_{_item.Id}_{DateTime.Now:HHmmss_fff}.mp4");
+
+                bool ok = await BusyWindow.RunAsync("구간 잘라내는 중… 잠시만 기다려주세요.",
+                    () => FfmpegService.TrimConvertAsync(ffmpeg, input, output,
+                        "mp4", start, len, _controller.Settings.GifFps));
+                if (!ok || !File.Exists(output))
+                {
+                    if (!_closed)
+                        MessageBox.Show("잘라내기에 실패했습니다.", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (_closed)
+                {
+                    // 변환 중 플레이어가 닫힘: 항목만 갱신하고 닫힌 창의 미디어/타이머는 건드리지 않는다
+                    _item.ReplaceVideo(output, len);
+                    return;
+                }
+
+                // 이전 파일 핸들을 놓아야 교체/삭제가 가능
+                _timer.Stop();
+                Player.Pause();
+                Player.Close();
+                Player.Source = null;
+
+                _item.ReplaceVideo(output, len);
+
+                // 새 파일로 다시 재생
+                _trimStart = _trimEnd = null;
+                Player.Source = new Uri(output);
+                Player.Play();
+                _isPlaying = true;
+                PlayBtn.Content = "⏸ 일시정지";
+                _timer.Start();
+                UpdateTrimUi();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"저장에 실패했습니다.\n{ex.Message}", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (!_closed)
+                    MessageBox.Show($"저장에 실패했습니다.\n{ex.Message}", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+            finally { _trimBusy = false; }
         }
 
         /// <summary>선택 구간을 잘라 캡쳐 목록에 새 항목으로 추가</summary>

@@ -64,6 +64,19 @@ namespace OctoCapture.Services
             SetWindowLong(hWnd, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW);
         }
 
+        [DllImport("user32.dll")]
+        public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+        /// <summary>
+        /// 창을 화면 캡쳐/녹화에서 제외한다 (Windows 10 2004+).
+        /// 녹화 컨트롤 바/테두리가 녹화 영상에 찍히지 않도록 사용.
+        /// </summary>
+        public static void ExcludeFromCapture(IntPtr hWnd)
+        {
+            try { SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE); } catch { }
+        }
+
         [DllImport("dwmapi.dll")]
         public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
         public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;

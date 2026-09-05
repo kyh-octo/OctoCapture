@@ -18,10 +18,31 @@ namespace OctoCapture.Windows
         private static readonly Brush ActiveBg = new SolidColorBrush(Color.FromRgb(0x2F, 0x6B, 0xAF));
         private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(0x2F, 0x9B, 0xFF));
 
+        /// <summary>캡쳐용 모드 목록</summary>
+        public static readonly (string Label, CaptureMode Mode)[] CaptureItems =
+        {
+            ("⬚ 직접", CaptureMode.Region),
+            ("🗔 창", CaptureMode.Window),
+            ("▣ 단위", CaptureMode.Unit),
+            ("🖵 화면", CaptureMode.Monitor),
+            ("🖥 전체", CaptureMode.Full),
+            ("⇅ 스크롤", CaptureMode.Scroll),
+        };
+
+        /// <summary>녹화 영역 지정용 모드 목록</summary>
+        public static readonly (string Label, CaptureMode Mode)[] RecordingItems =
+        {
+            ("⬚ 직접 지정", CaptureMode.Region),
+            ("🗔 창", CaptureMode.Window),
+            ("▣ 단위", CaptureMode.Unit),
+            ("🖥 전체 화면", CaptureMode.Monitor),
+        };
+
         private bool _dragging;
         private Point _dragOffset;
 
-        public CaptureModeBar(CaptureMode current, Action<CaptureMode> onSelect, Action onCancel)
+        public CaptureModeBar(CaptureMode current, Action<CaptureMode> onSelect, Action onCancel,
+            (string Label, CaptureMode Mode)[]? items = null)
         {
             Background = new SolidColorBrush(Color.FromArgb(238, 0x22, 0x22, 0x26));
             BorderBrush = Accent;
@@ -43,16 +64,7 @@ namespace OctoCapture.Windows
                 ToolTip = "드래그하여 이동",
             });
 
-            (string Label, CaptureMode Mode)[] items =
-            {
-                ("⬚ 직접", CaptureMode.Region),
-                ("🗔 창", CaptureMode.Window),
-                ("▣ 단위", CaptureMode.Unit),
-                ("🖵 화면", CaptureMode.Monitor),
-                ("🖥 전체", CaptureMode.Full),
-                ("⇅ 스크롤", CaptureMode.Scroll),
-            };
-            foreach (var (label, mode) in items)
+            foreach (var (label, mode) in items ?? CaptureItems)
             {
                 var m = mode; // 클로저 캡쳐
                 panel.Children.Add(MakeItem(label, mode == current, () => onSelect(m)));

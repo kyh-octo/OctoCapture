@@ -63,9 +63,9 @@ namespace OctoCapture
             MainWindow = _mainWindow;
             _tray = new TrayIconService(_controller, _recorder, _mainWindow);
 
-            _controller.ItemCaptured += item =>
+            _controller.ItemCaptured += (item, copied) =>
             {
-                if (_settings.CopyToClipboardOnCapture)
+                if (copied)
                     _tray.ShowBalloon("캡쳐 완료", $"{item.Title} - 클립보드에 복사되었습니다.");
             };
 

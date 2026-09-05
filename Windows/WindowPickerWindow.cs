@@ -30,7 +30,8 @@ namespace OctoCapture.Windows
         private readonly Border _labelHost;
 
         public WindowPickerWindow(BitmapSource frozen, PickerMode mode, string hintText,
-            Services.CaptureMode? barMode = null, List<WindowInfo>? customTargets = null)
+            Services.CaptureMode? barMode = null, List<WindowInfo>? customTargets = null,
+            (string Label, Services.CaptureMode Mode)[]? barItems = null)
         {
             _frozen = frozen;
             _mode = mode;
@@ -86,7 +87,8 @@ namespace OctoCapture.Windows
             {
                 bar = new CaptureModeBar(currentMode,
                     m => { SwitchRequest = m; Selected = null; Close(); },
-                    () => { Selected = null; Close(); });
+                    () => { Selected = null; Close(); },
+                    barItems);
                 canvas.Children.Add(bar);
             }
 

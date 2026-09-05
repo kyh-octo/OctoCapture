@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -11,18 +12,24 @@ namespace OctoCapture.Models
     /// 메모리 최적화: 원본 BitmapSource를 들고 있지 않고 PNG 인코딩된 byte[]와
     /// 작은 썸네일(Frozen)만 유지한다. 원본은 필요할 때 디코딩한다.
     /// 동영상은 임시 파일 경로만 유지한다(앱 종료 시 삭제).
+    /// 편집으로 내용이 바뀌면 PropertyChanged로 목록 UI가 갱신된다.
     /// </summary>
-    public class CaptureItem
+    public class CaptureItem : INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public CaptureItemKind Kind { get; }
         public DateTime CreatedAt { get; } = DateTime.Now;
+
+        /// <summary>항목 고유 ID (임시 파일명 충돌 방지용)</summary>
+        public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
         public string Title { get; set; } = "";
 
         /// <summary>이미지 항목: PNG 인코딩 데이터</summary>
         public byte[]? PngData { get; private set; }
 
         /// <summary>동영상 항목: 임시 mp4 파일 경로</summary>
-        public string? VideoPath { get; }
+        public string? VideoPath { get; private set; }
 
         public TimeSpan? Duration { get; set; }
         public int PixelWidth { get; private set; }
@@ -30,6 +37,9 @@ namespace OctoCapture.Models
 
         /// <summary>목록 표시용 썸네일 (Frozen, 최대 200px)</summary>
         public BitmapSource? Thumbnail { get; private set; }
+
+        /// <summary>동영상 형식 변환 캐시 (형식 → 임시 파일 경로). 같은 형식으로 다시 복사할 때 재변환을 피한다.</summary>
+        public Dictionary<string, string> ConvertedCache { get; } = new();
 
         public string Info => Kind == CaptureItemKind.Image
             ? $"{PixelWidth}×{PixelHeight}  ·  {FormatSize(PngData?.LongLength ?? 0)}"
@@ -68,7 +78,7 @@ namespace OctoCapture.Models
             return item;
         }
 
-        /// <summary>편집 후 이미지 교체에도 사용</summary>
+        /// <summary>이미지 교체 (편집 [저장]=덮어쓰기 포함). 목록 UI가 자동 갱신된다.</summary>
         public void SetImage(BitmapSource source)
         {
             if (Kind != CaptureItemKind.Image) throw new InvalidOperationException();
@@ -82,6 +92,42 @@ namespace OctoCapture.Models
             PngData = ms.ToArray();
 
             Thumbnail = MakeThumbnail(source);
+            NotifyVisuals();
+        }
+
+        /// <summary>동영상 교체 (트림 [저장]=덮어쓰기). 이전 임시 파일과 변환 캐시를 정리한다.</summary>
+        public void ReplaceVideo(string newPath, TimeSpan? duration)
+        {
+            if (Kind != CaptureItemKind.Video) throw new InvalidOperationException();
+            string? old = VideoPath;
+            VideoPath = newPath;
+            Duration = duration;
+
+            // 클립보드가 참조 중인 파일은 남기고, 잠긴 파일은 지연 재시도로 정리
+            foreach (var cached in ConvertedCache.Values)
+                Services.TempFileCleaner.DeleteLater(cached);
+            ConvertedCache.Clear();
+
+            if (old != null && !string.Equals(old, newPath, StringComparison.OrdinalIgnoreCase))
+                Services.TempFileCleaner.DeleteLater(old);
+
+            NotifyVisuals();
+        }
+
+        /// <summary>항목 삭제 시 관련 임시 파일 정리 (클립보드 참조 파일은 보호)</summary>
+        public void DeleteTempFiles()
+        {
+            if (Kind != CaptureItemKind.Video) return;
+            Services.TempFileCleaner.DeleteLater(VideoPath);
+            foreach (var cached in ConvertedCache.Values)
+                Services.TempFileCleaner.DeleteLater(cached);
+            ConvertedCache.Clear();
+        }
+
+        private void NotifyVisuals()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Thumbnail)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Info)));
         }
 
         /// <summary>원본 이미지를 디코딩해 반환. 호출자가 캐시하지 말 것(메모리 절약).</summary>

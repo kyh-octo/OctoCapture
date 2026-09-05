@@ -19,7 +19,6 @@ namespace OctoCapture.Windows
             ChkStartup.IsChecked = _settings.RunAtStartup;
             ChkTray.IsChecked = _settings.MinimizeToTrayOnClose;
             ChkClipboard.IsChecked = _settings.CopyToClipboardOnCapture;
-            ChkOpenEditor.IsChecked = _settings.OpenEditorAfterCapture;
             TxtSaveFolder.Text = _settings.SaveFolder;
             SelectCombo(CmbImageFormat, _settings.ImageFormat);
             SelectCombo(CmbVideoFormat, _settings.VideoFormat);
@@ -103,7 +102,6 @@ namespace OctoCapture.Windows
             _settings.RunAtStartup = ChkStartup.IsChecked == true;
             _settings.MinimizeToTrayOnClose = ChkTray.IsChecked == true;
             _settings.CopyToClipboardOnCapture = ChkClipboard.IsChecked == true;
-            _settings.OpenEditorAfterCapture = ChkOpenEditor.IsChecked == true;
             _settings.SaveFolder = TxtSaveFolder.Text.Trim();
             _settings.ImageFormat = ComboValue(CmbImageFormat).ToLowerInvariant();
             _settings.VideoFormat = ComboValue(CmbVideoFormat).ToLowerInvariant();

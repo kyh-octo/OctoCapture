@@ -19,8 +19,8 @@ namespace OctoCapture.Services
         public ObservableCollection<CaptureItem> History { get; } = new();
         public AppSettings Settings { get; }
 
-        /// <summary>캡쳐 완료 알림 (트레이 풍선 등)</summary>
-        public event Action<CaptureItem>? ItemCaptured;
+        /// <summary>캡쳐/추가 완료 알림 (item, 클립보드 복사 여부)</summary>
+        public event Action<CaptureItem, bool>? ItemCaptured;
 
         private bool _busy;
 
@@ -137,8 +137,8 @@ namespace OctoCapture.Services
             }
         }
 
-        /// <summary>모니터 목록을 픽커 대상으로 변환</summary>
-        private static List<WindowInfo> GetMonitorTargets()
+        /// <summary>모니터 목록을 픽커 대상으로 변환 (녹화 영역 지정에서도 사용)</summary>
+        public static List<WindowInfo> GetMonitorTargets()
         {
             var list = new List<WindowInfo>();
             var screens = System.Windows.Forms.Screen.AllScreens;
@@ -208,31 +208,28 @@ namespace OctoCapture.Services
             }
         }
 
-        /// <summary>메인 창을 표시/활성화. 편집기가 열려 있으면 편집기를 앞으로.</summary>
+        /// <summary>메인 창을 표시/활성화.</summary>
         public static void ShowMainWindow()
         {
             if (Application.Current.MainWindow is not MainWindow mw) return;
             mw.ShowFromTray();
-            var editor = Application.Current.Windows.OfType<EditorWindow>().LastOrDefault(w => w.IsVisible);
-            editor?.Activate();
         }
 
-        public void AddImage(BitmapSource image, string title)
+        /// <summary>이미지를 히스토리에 추가. copyToClipboard=false면 클립보드를 건드리지 않는다(편집 저장 등).</summary>
+        public void AddImage(BitmapSource image, string title, bool copyToClipboard = true)
         {
             var item = CaptureItem.FromImage(image, title);
             History.Insert(0, item);
-            if (Settings.CopyToClipboardOnCapture)
-                ClipboardService.CopyImage(image);
-            ItemCaptured?.Invoke(item);
-            if (Settings.OpenEditorAfterCapture)
-                OpenEditor(item);
+            bool copied = copyToClipboard && Settings.CopyToClipboardOnCapture
+                          && ClipboardService.CopyImage(image);
+            ItemCaptured?.Invoke(item, copied);
             ScheduleMemoryTrim();
         }
 
-        public void AddVideo(CaptureItem item)
+        public void AddVideo(CaptureItem item, bool copiedToClipboard = false)
         {
             History.Insert(0, item);
-            ItemCaptured?.Invoke(item);
+            ItemCaptured?.Invoke(item, copiedToClipboard);
             ScheduleMemoryTrim();
         }
 
@@ -248,14 +245,6 @@ namespace OctoCapture.Services
                     System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
                 GC.Collect(2, GCCollectionMode.Optimized);
             }, TaskScheduler.Default);
-        }
-
-        public void OpenEditor(CaptureItem item)
-        {
-            if (item.Kind != CaptureItemKind.Image) return;
-            var editor = new EditorWindow(item, this);
-            editor.Show();
-            editor.Activate();
         }
 
         private static void ShowError(Exception ex)

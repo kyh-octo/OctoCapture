@@ -64,13 +64,15 @@
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,3,0,3">
-                        <Button Style="{StaticResource PlayerBtn}" Content="💾 저장 (선택 구간)" Click="TrimSave_Click"/>
-                        <Button Style="{StaticResource PlayerBtn}" Content="＋ 목록에 추가 (선택 구간)" Click="TrimToList_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="💾 저장"
+                                ToolTip="선택 구간만 남기고 현재 캡쳐에 덮어쓰기" Click="TrimOverwrite_Click"/>
+                        <Button Style="{StaticResource PlayerBtn}" Content="＋ 새 캡쳐 저장"
+                                ToolTip="선택 구간을 캡쳐 목록에 새 항목으로 추가" Click="TrimToList_Click"/>
                         <Button Style="{StaticResource PlayerBtn}" Content="외부 플레이어" Click="External_Click"/>
                     </StackPanel>
                 </WrapPanel>
 
-                <TextBlock Text="Space: 재생/일시정지  ·  ←/→: 5초 이동  ·  구간을 지정하지 않으면 전체가 저장됩니다"
+                <TextBlock Text="Space: 재생/일시정지  ·  ←/→: 5초 이동  ·  파일로 저장/복사는 메인 화면의 [파일 저장]/[복사] 사용"
                            Foreground="#77777C" FontSize="11" Margin="0,6,0,0"/>
             </StackPanel>
         </Border>
