@@ -58,6 +58,7 @@ namespace OctoCapture
             _settings = AppSettings.Load();
             _controller = new CaptureController(_settings);
             _recorder = new RecordingCoordinator(_controller);
+            _controller.Recording = _recorder; // 캡쳐 모드 바 ↔ 녹화 모드 바 전환용
             _hotkeys = new HotkeyManager();
             _mainWindow = new MainWindow(_controller, _recorder);
             MainWindow = _mainWindow;

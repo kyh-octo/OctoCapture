@@ -18,7 +18,7 @@ namespace OctoCapture.Windows
         private static readonly Brush ActiveBg = new SolidColorBrush(Color.FromRgb(0x2F, 0x6B, 0xAF));
         private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(0x2F, 0x9B, 0xFF));
 
-        /// <summary>캡쳐용 모드 목록</summary>
+        /// <summary>캡쳐용 모드 목록 (마지막 항목은 녹화로 전환)</summary>
         public static readonly (string Label, CaptureMode Mode)[] CaptureItems =
         {
             ("⬚ 직접", CaptureMode.Region),
@@ -27,16 +27,20 @@ namespace OctoCapture.Windows
             ("🖵 화면", CaptureMode.Monitor),
             ("🖥 전체", CaptureMode.Full),
             ("⇅ 스크롤", CaptureMode.Scroll),
+            ("⏺ 화면 녹화", CaptureMode.Record),
         };
 
-        /// <summary>녹화 영역 지정용 모드 목록</summary>
+        /// <summary>녹화 영역 지정용 모드 목록 (마지막 항목은 캡쳐로 전환)</summary>
         public static readonly (string Label, CaptureMode Mode)[] RecordingItems =
         {
             ("⬚ 직접 지정", CaptureMode.Region),
             ("🗔 창", CaptureMode.Window),
             ("▣ 단위", CaptureMode.Unit),
             ("🖥 전체 화면", CaptureMode.Monitor),
+            ("📷 화면 캡쳐", CaptureMode.Capture),
         };
+
+        private static bool IsSwitchItem(CaptureMode m) => m is CaptureMode.Record or CaptureMode.Capture;
 
         private bool _dragging;
         private Point _dragOffset;
@@ -67,15 +71,12 @@ namespace OctoCapture.Windows
             foreach (var (label, mode) in items ?? CaptureItems)
             {
                 var m = mode; // 클로저 캡쳐
-                panel.Children.Add(MakeItem(label, mode == current, () => onSelect(m)));
+                if (IsSwitchItem(mode))
+                    panel.Children.Add(MakeSeparator()); // 캡쳐 ↔ 녹화 전환 버튼은 구분선 뒤에 강조 표시
+                panel.Children.Add(MakeItem(label, mode == current, () => onSelect(m), emphasize: IsSwitchItem(mode)));
             }
 
-            panel.Children.Add(new System.Windows.Shapes.Rectangle
-            {
-                Width = 1,
-                Fill = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x5C)),
-                Margin = new Thickness(6, 3, 6, 3),
-            });
+            panel.Children.Add(MakeSeparator());
             panel.Children.Add(MakeItem("✕ 취소", false, onCancel));
 
             Child = panel;
@@ -107,12 +108,21 @@ namespace OctoCapture.Windows
             };
         }
 
-        private static Border MakeItem(string text, bool active, Action onClick)
+        private static System.Windows.Shapes.Rectangle MakeSeparator() => new()
+        {
+            Width = 1,
+            Fill = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x5C)),
+            Margin = new Thickness(6, 3, 6, 3),
+        };
+
+        private static readonly Brush SwitchBorder = new SolidColorBrush(Color.FromRgb(0xE5, 0x3E, 0x3E));
+
+        private static Border MakeItem(string text, bool active, Action onClick, bool emphasize = false)
         {
             var item = new Border
             {
                 Background = active ? ActiveBg : NormalBg,
-                BorderBrush = active ? Accent : Brushes.Transparent,
+                BorderBrush = active ? Accent : (emphasize ? SwitchBorder : Brushes.Transparent),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(5),
                 Padding = new Thickness(10, 5, 10, 5),
@@ -123,6 +133,7 @@ namespace OctoCapture.Windows
                     Text = text,
                     Foreground = Brushes.White,
                     FontSize = 13,
+                    FontWeight = emphasize ? FontWeights.SemiBold : FontWeights.Normal,
                 },
             };
             if (!active)

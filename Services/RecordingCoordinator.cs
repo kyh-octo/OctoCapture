@@ -57,7 +57,8 @@ namespace OctoCapture.Services
         /// 영역 지정 시작. restoreRegion이 있으면 [영역 변경] 재지정 흐름이며,
         /// 취소 시 이전 영역/오디오 설정으로 대기 상태를 복원한다.
         /// </summary>
-        private async void BeginRegionSelect(RECT? restoreRegion = null, bool? sysAudio = null, bool? mic = null)
+        private async void BeginRegionSelect(RECT? restoreRegion = null, bool? sysAudio = null, bool? mic = null,
+            BitmapSource? frozenOverride = null)
         {
             _state = State.Armed;
             try
@@ -66,7 +67,8 @@ namespace OctoCapture.Services
                     if (w is MainWindow && w.IsVisible) { w.Hide(); await Task.Delay(180); }
 
                 // 영역 지정 방식 선택 루프: 직접 지정 / 창 / 단위 / 전체 화면 (모드 바로 전환 가능)
-                var frozen = ScreenCaptureService.CaptureFullScreen();
+                // 캡쳐 모드 바의 [화면 녹화]에서 넘어온 경우 같은 프리즈 프레임을 그대로 사용
+                var frozen = frozenOverride ?? ScreenCaptureService.CaptureFullScreen();
                 CaptureMode mode = _areaMode;
                 RECT? picked = null;
                 while (picked == null)
@@ -76,7 +78,11 @@ namespace OctoCapture.Services
                         var selector = new RegionSelectorWindow(frozen,
                             "녹화할 영역을 드래그하세요 (Esc: 취소)", mode, Windows.CaptureModeBar.RecordingItems);
                         selector.ShowDialog();
-                        if (selector.SwitchRequest is CaptureMode next) { mode = next; continue; }
+                        if (selector.SwitchRequest is CaptureMode next)
+                        {
+                            if (next == CaptureMode.Capture) { HandOffToCapture(frozen); return; }
+                            mode = next; continue;
+                        }
                         if (selector.SelectedRect is RECT r) { picked = r; break; }
                     }
                     else
@@ -90,7 +96,11 @@ namespace OctoCapture.Services
                         var picker = new WindowPickerWindow(frozen, pickerMode, hint, mode, targets,
                             Windows.CaptureModeBar.RecordingItems);
                         picker.ShowDialog();
-                        if (picker.SwitchRequest is CaptureMode next) { mode = next; continue; }
+                        if (picker.SwitchRequest is CaptureMode next)
+                        {
+                            if (next == CaptureMode.Capture) { HandOffToCapture(frozen); return; }
+                            mode = next; continue;
+                        }
                         if (picker.Selected != null) { picked = picker.Selected.Bounds; break; }
                     }
 
@@ -180,6 +190,29 @@ namespace OctoCapture.Services
             _state = State.Idle;
             _startThumbnail = null;
             CaptureController.ShowMainWindow(); // 취소 후 메인 창 표시
+        }
+
+        /// <summary>
+        /// 캡쳐 모드 바의 [화면 녹화]에서 호출: 같은 프리즈 프레임으로 녹화 영역 지정을 시작한다.
+        /// 녹화 중이면 거부(false). 대기(Armed) 상태였다면 기존 바/테두리를 닫고 새로 지정한다.
+        /// </summary>
+        public bool BeginRegionSelectFrom(BitmapSource frozen)
+        {
+            if (_state is State.Recording or State.Stopping) return false;
+            if (_state == State.Armed) CleanupUi();
+            BeginRegionSelect(frozenOverride: frozen);
+            return true;
+        }
+
+        /// <summary>
+        /// 녹화 영역 지정 바의 [화면 캡쳐]: 같은 프리즈 프레임으로 캡쳐 흐름에 넘긴다.
+        /// 현재 메서드(BeginRegionSelect)가 반환된 뒤 디스패처에서 시작해 중첩을 피한다.
+        /// </summary>
+        private void HandOffToCapture(BitmapSource frozen)
+        {
+            _state = State.Idle;
+            _startThumbnail = null;
+            Application.Current.Dispatcher.BeginInvoke(() => _controller.StartInteractiveWithFrozen(frozen));
         }
 
         /// <summary>
