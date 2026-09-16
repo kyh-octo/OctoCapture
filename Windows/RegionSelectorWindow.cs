@@ -199,12 +199,16 @@ namespace OctoCapture.Windows
             Close();
         }
 
+        /// <summary>
+        /// 두 커서 좌표로 선택 영역을 만든다. 커서가 놓인 픽셀까지 포함되도록
+        /// 오른쪽/아래 경계는 큰 좌표 + 1 (반개구간) — 그렇지 않으면 우측·하단 1px이 잘린다.
+        /// </summary>
         private static RECT MakeRect((int X, int Y) a, (int X, int Y) b) => new()
         {
             Left = Math.Min(a.X, b.X),
             Top = Math.Min(a.Y, b.Y),
-            Right = Math.Max(a.X, b.X),
-            Bottom = Math.Max(a.Y, b.Y),
+            Right = Math.Max(a.X, b.X) + 1,
+            Bottom = Math.Max(a.Y, b.Y) + 1,
         };
 
         private void UpdateSelectionVisual(RECT physical)
@@ -269,11 +273,12 @@ namespace OctoCapture.Windows
         public BitmapSource? GetCroppedImage()
         {
             if (SelectedRect is not RECT sel) return null;
-            var crop = new Int32Rect(
-                Math.Max(0, sel.Left - VirtualScreenRect.Left),
-                Math.Max(0, sel.Top - VirtualScreenRect.Top),
-                Math.Min(sel.Width, _frozen.PixelWidth),
-                Math.Min(sel.Height, _frozen.PixelHeight));
+            // 가상 화면 범위로 클램프한 뒤 프레임 좌표로 변환 (화면 끝 픽셀까지 정확히 포함)
+            RECT vs = VirtualScreenRect;
+            int l = Math.Max(sel.Left, vs.Left), t = Math.Max(sel.Top, vs.Top);
+            int r = Math.Min(sel.Right, vs.Right), b = Math.Min(sel.Bottom, vs.Bottom);
+            if (r - l <= 0 || b - t <= 0) return null;
+            var crop = new Int32Rect(l - vs.Left, t - vs.Top, r - l, b - t);
             var cropped = new CroppedBitmap(_frozen, crop);
             var result = new WriteableBitmap(cropped); // 원본 프레임 참조를 끊어 메모리 해제 가능하게
             result.Freeze();

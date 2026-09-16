@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using OctoCapture.Models;
 
@@ -39,20 +41,26 @@ namespace OctoCapture.Services
             return null;
         }
 
-        /// <summary>ffmpeg 확보. 없으면 다운로드 여부를 묻고 내려받는다. 실패/거부 시 null.</summary>
+        /// <summary>ffmpeg 확보. 없으면 다운로드 여부를 묻고 내려받는다. 실패/거부/취소 시 null.</summary>
         public static async Task<string?> EnsureFfmpegAsync()
         {
             var found = FindFfmpeg();
             if (found != null) return found;
 
             var answer = MessageBox.Show(
-                "GIF/WebP 변환에는 ffmpeg가 필요합니다.\n지금 다운로드할까요? (약 30~90MB, 1회만)",
+                "GIF/WebP 변환과 영상 구간 편집에는 ffmpeg가 필요합니다.\n" +
+                "지금 다운로드할까요? (약 100MB, 최초 1회만 · GitHub에서 내려받습니다)",
                 "OctoCapture", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (answer != MessageBoxResult.Yes) return null;
 
             try
             {
-                return await Windows.BusyWindow.RunAsync("ffmpeg 다운로드 중… 잠시만 기다려주세요.", DownloadAsync);
+                return await Windows.BusyWindow.RunAsync("ffmpeg 다운로드 중",
+                    (progress, ct) => DownloadAsync(progress, ct), allowCancel: true);
+            }
+            catch (OperationCanceledException)
+            {
+                return null; // 사용자가 취소
             }
             catch (Exception ex)
             {
@@ -62,27 +70,134 @@ namespace OctoCapture.Services
             }
         }
 
-        private static async Task<string?> DownloadAsync()
+        /// <summary>
+        /// 다운로드 서버 후보 (빠른 순). 국내에서 gyan.dev 직접 다운로드는 ~0.8MB/s로 매우 느리므로
+        /// GitHub에 올라온 동일 빌드(gyan 공식 미러)를 우선 사용하고, 실패 시 BtbN 빌드 → gyan.dev 순으로 시도한다.
+        /// </summary>
+        private static async Task<List<(string Label, string Url)>> ResolveMirrorsAsync(HttpClient http, CancellationToken ct)
+        {
+            var list = new List<(string, string)>();
+            try
+            {
+                using var res = await http.GetAsync("https://api.github.com/repos/GyanD/codexffmpeg/releases/latest", ct);
+                if (res.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+                    foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
+                    {
+                        string name = asset.GetProperty("name").GetString() ?? "";
+                        if (name.EndsWith("-essentials_build.zip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var url = asset.GetProperty("browser_download_url").GetString();
+                            if (!string.IsNullOrEmpty(url)) list.Add(("GitHub (gyan 미러)", url));
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { /* API 실패 시 아래 고정 URL로 진행 */ }
+
+            list.Add(("GitHub (BtbN)", "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"));
+            list.Add(("gyan.dev", DownloadUrl));
+            return list;
+        }
+
+        private static async Task<string?> DownloadAsync(IProgress<Windows.BusyProgress> progress, CancellationToken ct)
         {
             Directory.CreateDirectory(LocalDir);
             string zipPath = Path.Combine(LocalDir, "ffmpeg.zip");
+            try { File.Delete(zipPath); } catch { }
 
-            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
-            await using (var stream = await http.GetStreamAsync(DownloadUrl))
-            await using (var file = File.Create(zipPath))
+            using var http = new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All })
             {
-                await stream.CopyToAsync(file);
+                Timeout = Timeout.InfiniteTimeSpan, // 무응답 감지는 아래에서 청크 단위로 처리
+            };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("OctoCapture");
+
+            progress.Report(new Windows.BusyProgress { Status = "다운로드 서버를 찾는 중…" });
+            var mirrors = await ResolveMirrorsAsync(http, ct);
+
+            Exception? lastError = null;
+            bool downloaded = false;
+            foreach (var (label, url) in mirrors)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    progress.Report(new Windows.BusyProgress { Status = $"{label}에 연결하는 중…" });
+                    await DownloadFileAsync(http, url, zipPath, label, progress, ct);
+                    downloaded = true;
+                    break;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    try { File.Delete(zipPath); } catch { }
+                    progress.Report(new Windows.BusyProgress { Status = $"{label} 실패 ({ex.Message}) → 다음 서버 시도" });
+                }
             }
+            if (!downloaded)
+                throw new InvalidOperationException("모든 다운로드 서버에서 실패했습니다.\n" + (lastError?.Message ?? ""));
 
-            using (var zip = ZipFile.OpenRead(zipPath))
+            progress.Report(new Windows.BusyProgress { Fraction = null, Status = "압축 해제 중…" });
+            await Task.Run(() =>
             {
+                using var zip = ZipFile.OpenRead(zipPath);
                 var entry = zip.Entries.FirstOrDefault(e =>
                     e.Name.Equals("ffmpeg.exe", StringComparison.OrdinalIgnoreCase));
                 if (entry == null) throw new InvalidOperationException("압축 파일에서 ffmpeg.exe를 찾지 못했습니다.");
                 entry.ExtractToFile(LocalExe, true);
-            }
-            File.Delete(zipPath);
+            }, ct);
+            try { File.Delete(zipPath); } catch { }
             return LocalExe;
+        }
+
+        /// <summary>진행률/속도를 보고하며 파일을 내려받는다. 30초 동안 데이터가 없으면 실패로 간주한다.</summary>
+        private static async Task DownloadFileAsync(HttpClient http, string url, string destPath, string label,
+            IProgress<Windows.BusyProgress> progress, CancellationToken ct)
+        {
+            using var res = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            res.EnsureSuccessStatusCode();
+            long total = res.Content.Headers.ContentLength ?? -1;
+
+            await using var src = await res.Content.ReadAsStreamAsync(ct);
+            await using var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
+
+            var buffer = new byte[1 << 16];
+            long done = 0;
+            var sw = Stopwatch.StartNew();
+            var lastReport = TimeSpan.Zero;
+
+            while (true)
+            {
+                var readTask = src.ReadAsync(buffer, 0, buffer.Length, ct);
+                var finished = await Task.WhenAny(readTask, Task.Delay(TimeSpan.FromSeconds(30), ct));
+                if (finished != readTask)
+                    throw new TimeoutException("30초 동안 응답이 없습니다");
+                int n = await readTask;
+                if (n == 0) break;
+
+                await dst.WriteAsync(buffer, 0, n, ct);
+                done += n;
+
+                if (sw.Elapsed - lastReport > TimeSpan.FromMilliseconds(200))
+                {
+                    lastReport = sw.Elapsed;
+                    double speed = done / Math.Max(0.001, sw.Elapsed.TotalSeconds) / (1024 * 1024);
+                    string sizeText = total > 0
+                        ? $"{done / 1048576.0:0.0} / {total / 1048576.0:0.0} MB"
+                        : $"{done / 1048576.0:0.0} MB";
+                    progress.Report(new Windows.BusyProgress
+                    {
+                        Fraction = total > 0 ? (double)done / total : null,
+                        Status = $"{label}에서 내려받는 중 … {sizeText}  ({speed:0.0} MB/s)",
+                    });
+                }
+            }
+            if (total > 0 && done < total)
+                throw new IOException("다운로드가 중간에 끊겼습니다");
         }
 
         /// <summary>MP4를 GIF 또는 WebP로 변환. format: "gif" | "webp"</summary>
