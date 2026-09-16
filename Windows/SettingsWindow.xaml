@@ -118,6 +118,10 @@
                     <TextBox x:Name="HkRecord" Style="{StaticResource HotkeyBox}" PreviewKeyDown="Hotkey_KeyDown"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,3">
+                    <TextBlock Style="{StaticResource HotkeyLabel}" Text="녹화 일시정지/재개"/>
+                    <TextBox x:Name="HkPause" Style="{StaticResource HotkeyBox}" PreviewKeyDown="Hotkey_KeyDown"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,3">
                     <TextBlock Style="{StaticResource HotkeyLabel}" Text="메인 창 열기"/>
                     <TextBox x:Name="HkShowMain" Style="{StaticResource HotkeyBox}" PreviewKeyDown="Hotkey_KeyDown"/>
                 </StackPanel>

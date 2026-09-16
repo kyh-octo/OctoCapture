@@ -1,6 +1,13 @@
 ﻿# OctoCapture 설치 파일 빌드 스크립트
-# 사용법: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# 사용법: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 [-SkipWebsite]
 # 결과물: installer\output\OctoCapture-Setup-<버전>.exe
+# 빌드가 끝나면 update-website.ps1을 호출해 octo-brain.com 배포 섹션(웹사이트 릴리스 + store.html)을 자동 갱신한다.
+# -SkipWebsite 를 주면 웹사이트 갱신을 건너뛴다 (로컬 테스트 빌드용).
+
+param(
+    [switch]$SkipWebsite,
+    [string]$CoAuthor = ""
+)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
@@ -34,4 +41,15 @@ if (Test-Path $setup) {
     Write-Host "완료: $setup ($mb MB)" -ForegroundColor Green
 } else {
     throw "설치 파일이 생성되지 않았습니다."
+}
+
+# 4) octo-brain.com 배포 섹션 갱신 (실패해도 설치 파일 빌드 자체는 성공으로 둔다)
+if (-not $SkipWebsite) {
+    Write-Host "[3/3] octo-brain.com 배포 갱신..." -ForegroundColor Yellow
+    try {
+        & (Join-Path $PSScriptRoot "update-website.ps1") -Version $version -InstallerPath $setup -CoAuthor $CoAuthor
+    } catch {
+        Write-Host "경고: 웹사이트 갱신 실패 - $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "      수동 실행: powershell -ExecutionPolicy Bypass -File installer\update-website.ps1 -Version $version -InstallerPath `"$setup`"" -ForegroundColor Red
+    }
 }

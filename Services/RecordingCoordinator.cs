@@ -15,7 +15,7 @@ namespace OctoCapture.Services
     /// </summary>
     public class RecordingCoordinator
     {
-        private enum State { Idle, Armed, Recording, Stopping }
+        private enum State { Idle, Armed, Recording, Paused, Stopping }
 
         private readonly CaptureController _controller;
         private State _state = State.Idle;
@@ -37,16 +37,48 @@ namespace OctoCapture.Services
             _timer.Tick += (_, _) => _bar?.UpdateElapsed(_stopwatch.Elapsed);
         }
 
-        public bool IsRecording => _state == State.Recording;
+        /// <summary>녹화 진행 중(일시정지 포함)</summary>
+        public bool IsRecording => _state is State.Recording or State.Paused;
+        public bool IsPaused => _state == State.Paused;
 
-        /// <summary>단축키/버튼 진입점: 대기→영역지정, 지정됨→시작, 녹화 중→종료</summary>
+        /// <summary>단축키/버튼 진입점: 대기→영역지정, 지정됨→시작, 녹화 중(일시정지 포함)→종료</summary>
         public void Toggle()
         {
             switch (_state)
             {
                 case State.Idle: BeginRegionSelect(); break;
                 case State.Armed: StartRecording(); break;
-                case State.Recording: StopRecording(); break;
+                case State.Recording:
+                case State.Paused: StopRecording(); break;
+            }
+        }
+
+        /// <summary>녹화 일시정지 ↔ 재개 (컨트롤 바 버튼 / 단축키 / 트레이)</summary>
+        public void TogglePause()
+        {
+            if (_recorder == null) return;
+            try
+            {
+                if (_state == State.Recording)
+                {
+                    _recorder.Pause();
+                    _stopwatch.Stop();           // 경과 시간도 멈춤
+                    _state = State.Paused;
+                    _bar?.SetPaused(true);
+                    _frame?.SetPaused(true);
+                }
+                else if (_state == State.Paused)
+                {
+                    _recorder.Resume();
+                    _stopwatch.Start();
+                    _state = State.Recording;
+                    _bar?.SetPaused(false);
+                    _frame?.SetPaused(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"일시정지/재개 중 오류: {ex.Message}", "OctoCapture", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -162,6 +194,7 @@ namespace OctoCapture.Services
                 mic ?? _controller.Settings.RecordMicrophone);
             _bar.StartRequested += StartRecording;
             _bar.StopRequested += StopRecording;
+            _bar.PauseToggleRequested += TogglePause;
             _bar.Cancelled += CancelArmed;
             _bar.RegionChangeRequested += ChangeRegion;
             _bar.Show();
@@ -321,7 +354,7 @@ namespace OctoCapture.Services
 
         private void StopRecording()
         {
-            if (_state != State.Recording) return;
+            if (_state is not (State.Recording or State.Paused)) return;
             _state = State.Stopping;
             _timer.Stop();
             _stopwatch.Stop();

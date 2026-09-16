@@ -33,12 +33,28 @@
     <DockPanel>
         <Border DockPanel.Dock="Bottom" Background="#2A2A2E" Padding="12,8">
             <StackPanel>
-                <!-- 탐색 슬라이더 + 트림 구간 표시 밴드 -->
-                <Grid x:Name="SeekHost" Height="24" Margin="0,0,0,6">
-                    <Border x:Name="TrimBand" Background="#663FA9F5" Height="8" CornerRadius="4"
+                <!-- 탐색 슬라이더 + 구간 밴드 + 드래그 가능한 [ ] 핸들 -->
+                <Grid x:Name="SeekHost" Height="36" Margin="0,18,0,6">
+                    <Border x:Name="TrimBand" Background="#663FA9F5" Height="10" CornerRadius="4"
                             HorizontalAlignment="Left" VerticalAlignment="Center" Width="0"/>
                     <Slider x:Name="SeekSlider" Minimum="0" Maximum="1" VerticalAlignment="Center"
                             IsMoveToPointEnabled="True"/>
+                    <Canvas x:Name="TrimCanvas">
+                        <Border x:Name="StartHandle" Width="16" Height="26" CornerRadius="3" Background="#3FA9F5"
+                                Cursor="SizeWE" ToolTip="드래그하여 시작 지점 이동" Visibility="Collapsed">
+                            <TextBlock Text="[" Foreground="White" FontWeight="Bold" FontSize="15"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/>
+                        </Border>
+                        <Border x:Name="EndHandle" Width="16" Height="26" CornerRadius="3" Background="#3FA9F5"
+                                Cursor="SizeWE" ToolTip="드래그하여 끝 지점 이동" Visibility="Collapsed">
+                            <TextBlock Text="]" Foreground="White" FontWeight="Bold" FontSize="15"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/>
+                        </Border>
+                        <Border x:Name="DragLabel" Background="#EE222226" BorderBrush="#2F9BFF" BorderThickness="1"
+                                CornerRadius="3" Padding="6,2" Visibility="Collapsed" IsHitTestVisible="False">
+                            <TextBlock x:Name="DragLabelText" Foreground="White" FontSize="11"/>
+                        </Border>
+                    </Canvas>
                 </Grid>
 
                 <WrapPanel VerticalAlignment="Center">
@@ -59,8 +75,12 @@
                         <Button Style="{StaticResource PlayerBtn}" Content="[ 시작 지점" Click="SetTrimStart_Click"/>
                         <Button Style="{StaticResource PlayerBtn}" Content="끝 지점 ]" Click="SetTrimEnd_Click"/>
                         <Button Style="{StaticResource PlayerBtn}" Content="구간 초기화" Click="ResetTrim_Click"/>
+                        <RadioButton x:Name="RadioKeep" GroupName="rangeMode" Content="선택 구간 남기기" IsChecked="True"
+                                     Foreground="#DDDDDD" VerticalAlignment="Center" Margin="10,0,0,0" Checked="RangeMode_Changed"/>
+                        <RadioButton x:Name="RadioRemove" GroupName="rangeMode" Content="선택 구간 제거"
+                                     Foreground="#DDDDDD" VerticalAlignment="Center" Margin="8,0,0,0" Checked="RangeMode_Changed"/>
                         <TextBlock x:Name="TrimLabel" Text="구간: 전체" Foreground="#3FA9F5"
-                                   FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                   FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,3,0,3">
@@ -72,7 +92,7 @@
                     </StackPanel>
                 </WrapPanel>
 
-                <TextBlock Text="Space: 재생/일시정지  ·  ←/→: 5초 이동  ·  파일로 저장/복사는 메인 화면의 [파일 저장]/[복사] 사용"
+                <TextBlock Text="Space: 재생/일시정지  ·  ←/→: 5초 이동  ·  타임라인의 [ ] 핸들을 드래그해 구간 조절  ·  파일 저장/복사는 메인 화면에서"
                            Foreground="#77777C" FontSize="11" Margin="0,6,0,0"/>
             </StackPanel>
         </Border>

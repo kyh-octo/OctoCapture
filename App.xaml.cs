@@ -104,6 +104,7 @@ namespace OctoCapture
             Reg(_settings.HotkeyFullCapture, "전체 캡쳐", _controller.CaptureFull);
             Reg(_settings.HotkeyScrollCapture, "스크롤 캡쳐", _controller.CaptureScroll);
             Reg(_settings.HotkeyRecord, "녹화", _recorder.Toggle);
+            Reg(_settings.HotkeyPauseRecord, "녹화 일시정지/재개", _recorder.TogglePause);
             Reg(_settings.HotkeyShowMain, "메인 창 열기", () => _mainWindow.ShowFromTray());
 
             if (failed.Count > 0)

@@ -20,6 +20,7 @@ namespace OctoCapture.Services
         private readonly MainWindow _main;
         private readonly WinForms.ToolStripMenuItem _startupItem;
         private readonly WinForms.ToolStripMenuItem _recordItem;
+        private readonly WinForms.ToolStripMenuItem _pauseItem;
         private bool _disposed;
 
         public TrayIconService(CaptureController controller, RecordingCoordinator recorder, MainWindow main)
@@ -50,6 +51,9 @@ namespace OctoCapture.Services
             _recordItem = new WinForms.ToolStripMenuItem("화면 녹화 시작/종료");
             _recordItem.Click += (_, _) => _recorder.Toggle();
             menu.Items.Add(_recordItem);
+            _pauseItem = new WinForms.ToolStripMenuItem("⏸ 녹화 일시정지") { Visible = false };
+            _pauseItem.Click += (_, _) => _recorder.TogglePause();
+            menu.Items.Add(_pauseItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
 
             menu.Items.Add("설정…", null, (_, _) => OpenSettings());
@@ -64,6 +68,8 @@ namespace OctoCapture.Services
             {
                 _startupItem.Checked = _controller.Settings.RunAtStartup;
                 _recordItem.Text = _recorder.IsRecording ? "■ 녹화 종료" : "⏺ 화면 녹화";
+                _pauseItem.Visible = _recorder.IsRecording;
+                _pauseItem.Text = _recorder.IsPaused ? "▶ 녹화 재개" : "⏸ 녹화 일시정지";
             };
 
             _icon = new WinForms.NotifyIcon

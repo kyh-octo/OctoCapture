@@ -12,6 +12,12 @@ namespace OctoCapture.Windows
     public class RecordingFrameWindow : Window
     {
         private const int BorderPx = 3;
+        private static readonly Brush RecordingBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x3E, 0x3E));
+        private static readonly Brush PausedBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23));
+        private readonly Border _border;
+
+        /// <summary>일시정지 중에는 테두리를 주황색으로 표시</summary>
+        public void SetPaused(bool paused) => _border.BorderBrush = paused ? PausedBrush : RecordingBrush;
 
         public RecordingFrameWindow(RECT region)
         {
@@ -22,11 +28,12 @@ namespace OctoCapture.Windows
             ShowActivated = false;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
-            Content = new Border
+            _border = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x3E, 0x3E)),
+                BorderBrush = RecordingBrush,
                 BorderThickness = new Thickness(BorderPx),
             };
+            Content = _border;
             SourceInitialized += (_, _) =>
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
@@ -48,6 +55,7 @@ namespace OctoCapture.Windows
     {
         public event Action? StartRequested;
         public event Action? StopRequested;
+        public event Action? PauseToggleRequested;
         public event Action? Cancelled;
         public event Action? RegionChangeRequested;
 
@@ -55,8 +63,11 @@ namespace OctoCapture.Windows
         public bool Microphone => _mic.IsChecked == true;
 
         private readonly Button _mainBtn;
+        private readonly Button _pauseBtn;
         private readonly Button _regionBtn;
         private readonly TextBlock _elapsed;
+        private bool _paused;
+        private TimeSpan _lastElapsed;
         private readonly CheckBox _sysAudio;
         private readonly CheckBox _mic;
         private readonly Button _cancelBtn;
@@ -115,6 +126,21 @@ namespace OctoCapture.Windows
             };
             _regionBtn.Click += (_, _) => RegionChangeRequested?.Invoke();
             panel.Children.Add(_regionBtn);
+
+            // 녹화 중에만 보이는 일시정지/재개 버튼
+            _pauseBtn = new Button
+            {
+                Content = "⏸ 일시정지",
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x40)),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(8, 0, 0, 0),
+                Visibility = Visibility.Collapsed,
+                ToolTip = "녹화를 잠시 멈추거나 이어서 녹화합니다",
+            };
+            _pauseBtn.Click += (_, _) => PauseToggleRequested?.Invoke();
+            panel.Children.Add(_pauseBtn);
 
             _elapsed = new TextBlock
             {
@@ -197,18 +223,32 @@ namespace OctoCapture.Windows
             _recording = true;
             _mainBtn.Content = "■  녹화 종료";
             _regionBtn.Visibility = Visibility.Collapsed; // 녹화 중에는 영역 변경 불가
+            _pauseBtn.Visibility = Visibility.Visible;
             _sysAudio.IsEnabled = false;
             _mic.IsEnabled = false;
             _cancelBtn.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>일시정지 상태 표시 갱신</summary>
+        public void SetPaused(bool paused)
+        {
+            _paused = paused;
+            _pauseBtn.Content = paused ? "▶ 재개" : "⏸ 일시정지";
+            UpdateElapsed(_lastElapsed);
         }
 
         public void SetBusy(string text)
         {
             _mainBtn.IsEnabled = false;
             _mainBtn.Content = text;
+            _pauseBtn.IsEnabled = false;
         }
 
-        public void UpdateElapsed(TimeSpan t) =>
-            _elapsed.Text = t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss");
+        public void UpdateElapsed(TimeSpan t)
+        {
+            _lastElapsed = t;
+            string time = t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss");
+            _elapsed.Text = _paused ? $"⏸ {time}" : time;
+        }
     }
 }

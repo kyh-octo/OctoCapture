@@ -34,6 +34,7 @@ namespace OctoCapture.Windows
             HkFull.Text = _settings.HotkeyFullCapture;
             HkScroll.Text = _settings.HotkeyScrollCapture;
             HkRecord.Text = _settings.HotkeyRecord;
+            HkPause.Text = _settings.HotkeyPauseRecord;
             HkShowMain.Text = _settings.HotkeyShowMain;
         }
 
@@ -88,7 +89,7 @@ namespace OctoCapture.Windows
             {
                 ("직접 캡쳐", HkRegion.Text), ("창 캡쳐", HkWindow.Text), ("단위별 캡쳐", HkUnit.Text),
                 ("화면 캡쳐", HkMonitor.Text), ("전체 캡쳐", HkFull.Text), ("스크롤 캡쳐", HkScroll.Text),
-                ("녹화", HkRecord.Text), ("메인 창", HkShowMain.Text),
+                ("녹화", HkRecord.Text), ("녹화 일시정지", HkPause.Text), ("메인 창", HkShowMain.Text),
             })
             {
                 if (!string.IsNullOrWhiteSpace(text) && !HotkeyManager.TryParse(text, out _, out _))
@@ -117,6 +118,7 @@ namespace OctoCapture.Windows
             _settings.HotkeyFullCapture = HkFull.Text;
             _settings.HotkeyScrollCapture = HkScroll.Text;
             _settings.HotkeyRecord = HkRecord.Text;
+            _settings.HotkeyPauseRecord = HkPause.Text;
             _settings.HotkeyShowMain = HkShowMain.Text;
 
             _settings.Save();

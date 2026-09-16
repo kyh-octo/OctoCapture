@@ -15,6 +15,7 @@ namespace OctoCapture.Models
         public string HotkeyFullCapture { get; set; } = "Ctrl+Shift+F";     // 전체(모든 모니터) 캡쳐
         public string HotkeyScrollCapture { get; set; } = "Ctrl+Shift+L";   // 스크롤 캡쳐
         public string HotkeyRecord { get; set; } = "Ctrl+Shift+R";          // 녹화 시작/중지
+        public string HotkeyPauseRecord { get; set; } = "Ctrl+Shift+P";     // 녹화 일시정지/재개
         public string HotkeyShowMain { get; set; } = "Ctrl+Shift+O";        // 메인 창 열기
 
         // ---- 일반 ----

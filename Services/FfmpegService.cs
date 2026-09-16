@@ -108,7 +108,44 @@ namespace OctoCapture.Services
                 "webp" => $"-y {seek}-i \"{input}\" {len}-c:v libwebp -quality 80 -compression_level 4 -loop 0 -an \"{output}\"",
                 _ => throw new ArgumentException(format),
             };
+            return await RunAsync(ffmpeg, args, output);
+        }
 
+        /// <summary>
+        /// 동영상에서 [start, end) 구간을 제거하고 앞뒤를 이어붙인다 (MP4).
+        /// 구간이 처음/끝에 닿으면 단순 트림으로 처리한다.
+        /// </summary>
+        public static async Task<bool> RemoveRangeAsync(string ffmpeg, string input, string output,
+            TimeSpan start, TimeSpan end, TimeSpan total)
+        {
+            var eps = TimeSpan.FromMilliseconds(50);
+            if (start <= eps)
+                return await TrimConvertAsync(ffmpeg, input, output, "mp4", end, null, 15);          // 뒤쪽만 남김
+            if (end >= total - eps)
+                return await TrimConvertAsync(ffmpeg, input, output, "mp4", null, start, 15);        // 앞쪽만 남김
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string s = start.TotalSeconds.ToString("0.###", inv);
+            string e = end.TotalSeconds.ToString("0.###", inv);
+            string enc = "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart";
+
+            // 1차: 영상+음성 (음성 트랙이 없으면 실패하므로 2차에서 영상만)
+            string withAudio =
+                $"-y -i \"{input}\" -filter_complex \"" +
+                $"[0:v]trim=0:{s},setpts=PTS-STARTPTS[v0];[0:a]atrim=0:{s},asetpts=PTS-STARTPTS[a0];" +
+                $"[0:v]trim={e},setpts=PTS-STARTPTS[v1];[0:a]atrim={e},asetpts=PTS-STARTPTS[a1];" +
+                $"[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]\" -map \"[v]\" -map \"[a]\" {enc} -c:a aac \"{output}\"";
+            if (await RunAsync(ffmpeg, withAudio, output)) return true;
+
+            string videoOnly =
+                $"-y -i \"{input}\" -filter_complex \"" +
+                $"[0:v]trim=0:{s},setpts=PTS-STARTPTS[v0];[0:v]trim={e},setpts=PTS-STARTPTS[v1];" +
+                $"[v0][v1]concat=n=2:v=1:a=0[v]\" -map \"[v]\" {enc} -an \"{output}\"";
+            return await RunAsync(ffmpeg, videoOnly, output);
+        }
+
+        private static async Task<bool> RunAsync(string ffmpeg, string args, string output)
+        {
             var psi = new ProcessStartInfo(ffmpeg, args)
             {
                 CreateNoWindow = true,
