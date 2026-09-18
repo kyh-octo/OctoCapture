@@ -72,6 +72,8 @@ dotnet publish -p:PublishProfile=FolderProfile1   # 단일 파일 게시
 powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 ```
 
+원클릭 릴리즈: `release.bat`을 실행하면 Git 최신 커밋 기준으로 설치 파일 빌드 → GitHub 릴리스(태그 `v<버전>`) 생성 → octo-brain.com 배포 갱신까지 자동으로 진행됩니다. 커밋되지 않은 로컬 변경은 릴리즈에 포함되지 않습니다. 옵션은 `installerelease.ps1` 머리말 참고.
+
 ## 기술 스택
 
 - C# / WPF (.NET 10, x64)
