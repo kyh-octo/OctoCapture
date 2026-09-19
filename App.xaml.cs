@@ -1,6 +1,7 @@
 using System.Windows;
 using OctoCapture.Models;
 using OctoCapture.Services;
+using OctoCapture.Windows;
 
 namespace OctoCapture
 {
@@ -80,6 +81,10 @@ namespace OctoCapture
             bool startMinimized = e.Args.Contains("--minimized");
             if (!startMinimized)
                 _mainWindow.Show();
+
+            // 시작 시 자동 업데이트 확인 (설정에서 끌 수 있음). 트레이로 시작했으면 풍선 알림만 띄운다.
+            _ = UpdatePrompt.RunStartupCheckAsync(_settings, () => _mainWindow,
+                info => _tray.ShowBalloon("새 버전 v" + info.Version, "설정 > 업데이트에서 설치할 수 있습니다."));
         }
 
         /// <summary>설정 변경 후 단축키/시작프로그램 재적용</summary>

@@ -53,6 +53,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; 앱 내 자동 업데이트(/SILENT /AUTOUPDATE=1)로 설치된 경우, 설치가 끝나면 앱을 다시 실행한다
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: IsAutoUpdate
 
 [UninstallRun]
 ; 제거 전에 실행 중인 앱 종료
@@ -63,3 +65,10 @@ Filename: "{cmd}"; Parameters: "/C reg delete HKCU\Software\Microsoft\Windows\Cu
 [UninstallDelete]
 ; 앱이 만든 설정/로그 정리 (시작프로그램 등록은 앱 설정에서 해제)
 Type: filesandordirs; Name: "{userappdata}\OctoCapture"
+
+[Code]
+{ 앱 내 자동 업데이트(UpdateService)가 /AUTOUPDATE=1 매개변수로 실행했는지 }
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:AUTOUPDATE|0}') = '1';
+end;

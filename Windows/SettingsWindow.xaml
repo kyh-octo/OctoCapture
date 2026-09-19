@@ -127,6 +127,15 @@
                 </StackPanel>
             </StackPanel>
 
+            <TextBlock Style="{StaticResource GroupTitle}" Text="업데이트"/>
+            <CheckBox x:Name="ChkAutoUpdate" Content="시작할 때 자동으로 업데이트 확인"/>
+            <TextBlock x:Name="TxtUpdateStatus" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button x:Name="BtnCheckUpdate" Content="업데이트 확인" Padding="12,4" Click="CheckUpdate_Click"/>
+                <Button x:Name="BtnInstallUpdate" Content="업데이트 설치" Padding="12,4" Margin="8,0,0,0" IsEnabled="False" Click="InstallUpdate_Click"/>
+                <TextBlock Margin="14,0,0,0"><Hyperlink Click="ReleaseNotes_Click" Foreground="#2F9BFF">변경 내역 보기</Hyperlink></TextBlock>
+            </StackPanel>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
                 <Button Content="저장" Width="90" Padding="0,6" Margin="0,0,8,0" Click="Ok_Click"/>
                 <Button Content="취소" Width="90" Padding="0,6" Click="Cancel_Click"/>
