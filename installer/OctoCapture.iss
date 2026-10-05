@@ -36,6 +36,11 @@ RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
+#ifdef SignedBuild
+SignTool=OctoSign
+SignedUninstaller=yes
+#endif
+
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -64,7 +69,7 @@ Filename: "{cmd}"; Parameters: "/C reg delete HKCU\Software\Microsoft\Windows\Cu
 
 [UninstallDelete]
 ; 앱이 만든 설정/로그 정리 (시작프로그램 등록은 앱 설정에서 해제)
-Type: filesandordirs; Name: "{userappdata}\OctoCapture"
+; Keep user settings and cached data during uninstall/reinstall.
 
 [Code]
 { 앱 내 자동 업데이트(UpdateService)가 /AUTOUPDATE=1 매개변수로 실행했는지 }

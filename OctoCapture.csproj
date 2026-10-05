@@ -17,7 +17,7 @@
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <AssemblyTitle>OctoCapture</AssemblyTitle>
     <Product>OctoCapture</Product>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -33,6 +33,12 @@
 
   <ItemGroup>
     <PackageReference Include="ScreenRecorderLib" Version="6.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="licenses\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

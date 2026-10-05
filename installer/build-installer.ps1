@@ -7,6 +7,7 @@
 
 param(
     [switch]$SkipWebsite,
+    [switch]$Signed,
     [string]$CoAuthor = ""
 )
 
@@ -15,6 +16,17 @@ $root = Split-Path $PSScriptRoot -Parent
 $csproj = Join-Path $root "OctoCapture.csproj"
 $publishDir = Join-Path $root "bin\Release\Publish"
 
+# Signed releases use external configuration only; no credentials belong in this repository.
+if ($Signed) {
+    $signTool = $env:OCTO_SIGNTOOL
+    $dlib = $env:OCTO_SIGN_DLIB
+    $metadata = $env:OCTO_SIGN_METADATA
+    foreach ($path in @($signTool, $dlib, $metadata)) {
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw 'Signed builds require OCTO_SIGNTOOL, OCTO_SIGN_DLIB and OCTO_SIGN_METADATA absolute file paths.'
+        }
+    }
+}
 # 1) csproj에서 버전 읽기
 $version = ([xml](Get-Content $csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 if (-not $version) { $version = "1.0.0" }
@@ -23,7 +35,9 @@ Write-Host "== OctoCapture v$version 설치 파일 빌드 ==" -ForegroundColor C
 
 # 2) 게시 (자체 포함 - 대상 PC에 .NET 설치 불필요)
 Write-Host "[1/2] dotnet publish..." -ForegroundColor Yellow
-if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+$expectedPublish = [IO.Path]::GetFullPath((Join-Path $root 'bin\Release\Publish'))
+if ([IO.Path]::GetFullPath($publishDir) -ne $expectedPublish) { throw 'Unexpected publish path.' }
+if (Test-Path -LiteralPath $publishDir) { Remove-Item -LiteralPath $publishDir -Recurse -Force }
 dotnet publish $csproj "-p:PublishProfile=FolderProfile1" -v q -nologo
 if ($LASTEXITCODE -ne 0) { throw "게시 실패 (exit $LASTEXITCODE)" }
 
@@ -36,7 +50,18 @@ $iscc = @(
 if (-not $iscc) { throw "Inno Setup 6을 찾을 수 없습니다. winget install -e --id JRSoftware.InnoSetup 으로 설치하세요." }
 
 Write-Host "[2/2] Inno Setup 컴파일..." -ForegroundColor Yellow
-& $iscc "/DAppVersion=$version" (Join-Path $PSScriptRoot "OctoCapture.iss") | Select-Object -Last 3
+$isccArgs = @("/DAppVersion=$version")
+if ($Signed) {
+    $appExe = Join-Path $publishDir 'OctoCapture.exe'
+    & (Join-Path $PSScriptRoot 'sign-file.ps1') -Path $appExe -Provider ArtifactSigning -SignTool $signTool -Dlib $dlib -Metadata $metadata
+    $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
+    $helper = Join-Path $PSScriptRoot 'sign-file.ps1'
+    $signCommand = '$q' + $shell + '$q -NoProfile -ExecutionPolicy Bypass -File $q' + $helper + '$q -Path $f -Provider ArtifactSigning -SignTool $q' + $signTool + '$q -Dlib $q' + $dlib + '$q -Metadata $q' + $metadata + '$q'
+    $isccArgs += '/DSignedBuild'
+    $isccArgs += "/SOctoSign=$signCommand"
+}
+$isccArgs += (Join-Path $PSScriptRoot 'OctoCapture.iss')
+& $iscc @isccArgs | Select-Object -Last 3
 if ($LASTEXITCODE -ne 0) { throw "설치 파일 컴파일 실패 (exit $LASTEXITCODE)" }
 
 $setup = Join-Path $PSScriptRoot "output\OctoCapture-Setup-$version.exe"
@@ -46,6 +71,12 @@ if (Test-Path $setup) {
 } else {
     throw "설치 파일이 생성되지 않았습니다."
 }
+
+if ($Signed) {
+    & (Join-Path $PSScriptRoot 'verify-signature.ps1') -Path $setup -SignTool $signTool
+}
+$hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'output\SHA256SUMS.txt'), "$hash  $([IO.Path]::GetFileName($setup))" + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
 
 # 4) octo-brain.com 배포 섹션 갱신 (실패해도 설치 파일 빌드 자체는 성공으로 둔다)
 if (-not $SkipWebsite) {

@@ -84,3 +84,5 @@ powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 ## 라이선스
 
 [MIT License](LICENSE) © 2026 OctoBrain Softworks
+
+제3자 라이선스 및 구성요소 고지는 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)를 참고하세요.

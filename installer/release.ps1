@@ -18,6 +18,7 @@
 
 param(
     [switch]$SkipWebsite,
+    [switch]$Signed,
     [switch]$SkipRelease,
     [switch]$InPlace,
     [switch]$NoSync,
@@ -103,7 +104,7 @@ $worktree = $null
 try {
     if ($InPlace) {
         Step "[2/5] 설치 파일 빌드 (현재 폴더)"
-        & (Join-Path $PSScriptRoot "build-installer.ps1") -SkipWebsite
+        & (Join-Path $PSScriptRoot "build-installer.ps1") -SkipWebsite -Signed:$Signed
         if ($LASTEXITCODE) { throw "빌드 실패 (exit $LASTEXITCODE)" }
     } else {
         $worktree = Join-Path $env:TEMP "octo-release\$AppName"
@@ -114,12 +115,13 @@ try {
         }
         git worktree prune
         Run-Git @("worktree", "add", "--quiet", "--detach", $worktree, $shaFull)
-        & (Join-Path $worktree "installer\build-installer.ps1") -SkipWebsite
+        & (Join-Path $worktree "installer\build-installer.ps1") -SkipWebsite -Signed:$Signed
         if ($LASTEXITCODE) { throw "빌드 실패 (exit $LASTEXITCODE)" }
         $built = Join-Path $worktree "installer\output\$installerName"
         if (-not (Test-Path $built)) { throw "설치 파일이 생성되지 않았습니다: $built" }
         New-Item -ItemType Directory -Force $outputDir | Out-Null
         Copy-Item $built $installer -Force
+        Copy-Item (Join-Path $worktree "installer\output\SHA256SUMS.txt") (Join-Path $outputDir "SHA256SUMS.txt") -Force
     }
 } finally {
     if ($worktree -and (Test-Path $worktree)) {
@@ -140,7 +142,7 @@ if ($SkipRelease) {
     if ($LASTEXITCODE -ne 0) { throw "릴리스 목록 조회 실패" }
     if ($existing -contains $tag) {
         Write-Host "릴리스 $tag 존재 → 설치 파일 교체 업로드" -ForegroundColor Yellow
-        & $gh release upload $tag $installer -R $Repo --clobber
+        & $gh release upload $tag $installer (Join-Path $outputDir "SHA256SUMS.txt") -R $Repo --clobber
         if ($LASTEXITCODE -ne 0) { throw "릴리스 자산 업로드 실패" }
     } else {
         if (-not $tagExists) {
@@ -166,7 +168,7 @@ if ($SkipRelease) {
             Write-Host "릴리스 노트: 커밋 로그에서 자동 생성 ($($log.Count)줄)"
         }
         Write-Host "릴리스 $tag 생성 + 설치 파일 업로드" -ForegroundColor Yellow
-        & $gh release create $tag $installer -R $Repo --title "$AppName v$version" --notes-file $NotesFile --latest
+        & $gh release create $tag $installer (Join-Path $outputDir "SHA256SUMS.txt") -R $Repo --title "$AppName v$version" --notes-file $NotesFile --latest
         if ($LASTEXITCODE -ne 0) { throw "릴리스 생성 실패" }
     }
     Write-Host "https://github.com/$Repo/releases/tag/$tag" -ForegroundColor Green
